@@ -2,6 +2,8 @@
 
 Session-first terminal UI for local AI-generated focus music.
 
+![TUI preview](docs/tui-preview.svg)
+
 The TUI instructs a local backend. The backend owns planning, ACE-Step integration,
 device selection, continuity checks, playback state, and cache.
 
