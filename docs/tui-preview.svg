@@ -3,7 +3,7 @@
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="24" fill="#e0e0e0">
     <text x="96" y="168">focus: deep work       30:00 remaining</text>
     <text x="96" y="204">sound: lofi / neo soul</text>
-    <text x="96" y="240">state: idle            backend: local</text>
+    <text x="96" y="240">state: idle            backend: mock</text>
     <text x="96" y="276">energy: steady</text>
   </g>
 </svg>

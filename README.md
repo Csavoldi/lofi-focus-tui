@@ -26,11 +26,14 @@ Start the backend:
 lofi-backend
 ```
 
-Start the terminal UI:
+Start the terminal UI in a second terminal:
 
 ```bash
 lofi
 ```
+
+With the backend running, press `s` in the TUI to start a mock deep-work session.
+The TUI will update from `idle` to `playing` after the backend accepts the session.
 
 ## ACE-Step Smoke Test
 
