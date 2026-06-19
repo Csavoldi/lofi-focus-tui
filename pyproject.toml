@@ -1,0 +1,34 @@
+[project]
+name = "lofi-focus-tui"
+version = "0.1.0"
+description = "Session-first terminal UI for local AI-generated focus music"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "numpy>=1.26",
+  "pydantic>=2.8",
+  "textual>=0.80",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
+ace-step = [
+  "acestep @ git+https://github.com/ace-step/ACE-Step.git",
+]
+
+[project.scripts]
+lofi = "lofi_focus_tui.cli:main"
+lofi-backend = "lofi_focus_tui.backend.api:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
