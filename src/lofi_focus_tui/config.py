@@ -66,7 +66,8 @@ def load_config(path: Path | None = None) -> AppConfig:
 
 def _resolve_config_path(path: Path | None) -> Path | None:
     if path is not None:
-        return path if path.exists() else None
+        if path.exists():
+            return path
     for default_path in DEFAULT_CONFIG_PATHS:
         if default_path.exists():
             return default_path

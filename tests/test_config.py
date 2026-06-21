@@ -26,6 +26,20 @@ def test_config_loads_from_explicit_toml(tmp_path):
     assert config.generation.chunk_seconds == 60
 
 
+def test_missing_explicit_config_path_falls_back_to_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    default_path = tmp_path / "config.toml"
+    default_path.write_text(
+        "[generation]\nbackend = \"ace-step\"\nchunk_seconds = 60\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path / "missing.toml")
+
+    assert config.generation.backend == "ace-step"
+    assert config.generation.chunk_seconds == 60
+
+
 def test_env_overrides_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LOFI_BACKEND", "ace-step")
