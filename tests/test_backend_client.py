@@ -43,6 +43,30 @@ async def test_backend_client_starts_session_through_api():
     assert final_status.state == "playing"
 
 
+@pytest.mark.asyncio
+async def test_backend_client_controls_session_through_api():
+    manager = SessionManager(model=MockModelAdapter())
+    client = BackendClient(transport=ASGITransport(app=create_app(manager=manager)))
+    request = SessionRequest(
+        preset="deep_work",
+        duration_minutes=30,
+        energy=EnergyLevel.STEADY,
+        style_tags=["lofi"],
+        avoid_tags=["vocals"],
+    )
+
+    await client.start_session(request)
+    manager.wait_for_active_task()
+
+    paused = await client.pause_session()
+    resumed = await client.resume_session()
+    stopped = await client.stop_session()
+
+    assert paused.state == "paused"
+    assert resumed.state == "playing"
+    assert stopped.state == "idle"
+
+
 def test_backend_client_uses_server_config_base_url():
     client = BackendClient.from_config(ServerConfig(host="0.0.0.0", port=9999))
 

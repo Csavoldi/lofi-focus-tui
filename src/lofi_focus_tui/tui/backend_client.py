@@ -45,3 +45,26 @@ class BackendClient:
                 device="unknown",
             )
         return BackendStatus.model_validate(response.json())
+
+    async def pause_session(self) -> BackendStatus:
+        return await self._post_status("/sessions/pause")
+
+    async def resume_session(self) -> BackendStatus:
+        return await self._post_status("/sessions/resume")
+
+    async def stop_session(self) -> BackendStatus:
+        return await self._post_status("/sessions/stop")
+
+    async def _post_status(self, path: str) -> BackendStatus:
+        try:
+            async with AsyncClient(transport=self.transport, base_url=self.base_url) as client:
+                response = await client.post(path)
+                response.raise_for_status()
+        except HTTPError:
+            return BackendStatus(
+                state="error",
+                message="backend unavailable",
+                backend="offline",
+                device="unknown",
+            )
+        return BackendStatus.model_validate(response.json())
