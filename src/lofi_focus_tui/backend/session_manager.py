@@ -19,13 +19,15 @@ class SessionManager:
         model: ModelAdapter,
         generation_defaults: GenerationSettings | None = None,
         render_seconds_limit: int | None = None,
+        playback: PlaybackManager | None = None,
     ) -> None:
         self.model = model
         self.generation_defaults = generation_defaults
         self.render_seconds_limit = render_seconds_limit
-        self.playback = PlaybackManager()
+        self.playback = playback or PlaybackManager()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lofi-generation")
         self._lock = Lock()
+        self._playback_lock = Lock()
         self._tasks: dict[str, GenerationTask] = {}
         self._active_future: Future[None] | None = None
         self._status = BackendStatus(state=BackendState.IDLE, message="ready", backend=model.name)
@@ -54,6 +56,8 @@ class SessionManager:
             backend=self.model.name,
             device=device.backend,
         )
+        with self._playback_lock:
+            self.playback.stop()
         with self._lock:
             self._tasks[task.task_id] = task
             self._status = status
@@ -78,32 +82,38 @@ class SessionManager:
         return self.health()
 
     def pause_session(self) -> BackendStatus:
+        with self._playback_lock:
+            paused = self.playback.pause()
         with self._lock:
-            self.playback.pause()
-            self._status = self._status.model_copy(
-                update={"state": BackendState.PAUSED, "message": "paused"}
-            )
-            return self._status
+            if paused:
+                self._status = self._status.model_copy(
+                    update={"state": BackendState.PAUSED, "message": "paused"}
+                )
+            return self._status.model_copy()
 
     def resume_session(self) -> BackendStatus:
+        with self._playback_lock:
+            resumed = self.playback.resume()
         with self._lock:
-            self.playback.resume()
-            self._status = self._status.model_copy(
-                update={"state": BackendState.PLAYING, "message": "playing"}
-            )
-            return self._status
+            if resumed:
+                self._status = self._status.model_copy(
+                    update={"state": BackendState.PLAYING, "message": "playing"}
+                )
+            return self._status.model_copy()
 
     def stop_session(self) -> BackendStatus:
         with self._lock:
             if self._active_future is not None:
                 self._active_future.cancel()
-            self.playback.stop()
             self._status = BackendStatus(
                 state=BackendState.IDLE,
                 message="stopped",
                 backend=self.model.name,
             )
-            return self._status
+            status = self._status.model_copy()
+        with self._playback_lock:
+            self.playback.stop()
+        return status
 
     def _run_generation_task(
         self,
@@ -172,23 +182,31 @@ class SessionManager:
 
     def _complete_task_success(self, task: GenerationTask, result, device_backend: str) -> None:
         output_path = self._output_path(result.metadata)
-        with self._lock:
-            if self._status.active_task_id != task.task_id:
-                return
+        with self._playback_lock:
+            with self._lock:
+                if self._status.active_task_id != task.task_id:
+                    return
             self.playback.load(result)
-            task.output_path = output_path
-            task.update(BackendState.PLAYING, "playing", 1.0)
-            self._status = BackendStatus(
-                state=task.state,
-                message=task.message,
-                active_session_id=task.session_id,
-                progress=task.progress,
-                active_task_id=task.task_id,
-                output_path=task.output_path,
-                error=task.error,
-                backend=self.model.name,
-                device=device_backend,
-            )
+            with self._lock:
+                if self._status.active_task_id != task.task_id:
+                    self.playback.stop()
+                    return
+                task.output_path = output_path
+                message = "playing"
+                if getattr(self.playback, "last_error", None):
+                    message = "playing with fallback playback"
+                task.update(BackendState.PLAYING, message, 1.0)
+                self._status = BackendStatus(
+                    state=task.state,
+                    message=task.message,
+                    active_session_id=task.session_id,
+                    progress=task.progress,
+                    active_task_id=task.task_id,
+                    output_path=task.output_path,
+                    error=task.error,
+                    backend=self.model.name,
+                    device=device_backend,
+                )
 
     def _is_active_task(self, task: GenerationTask) -> bool:
         with self._lock:

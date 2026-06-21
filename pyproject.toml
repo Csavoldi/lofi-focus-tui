@@ -22,6 +22,9 @@ dev = [
 ace-step = [
   "acestep @ git+https://github.com/ace-step/ACE-Step.git",
 ]
+playback = [
+  "sounddevice>=0.4.7",
+]
 
 [project.scripts]
 lofi = "lofi_focus_tui.cli:main"

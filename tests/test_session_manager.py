@@ -98,6 +98,28 @@ class RecordingModel:
         )
 
 
+class RecordingPlayback:
+    def __init__(self) -> None:
+        self.loaded = None
+        self.paused = False
+        self.resumed = False
+        self.stopped = False
+
+    def load(self, result):
+        self.loaded = result
+
+    def pause(self) -> bool:
+        self.paused = True
+        return True
+
+    def resume(self) -> bool:
+        self.resumed = True
+        return True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 class SequencedBlockingModel:
     name = "sequenced-blocking"
 
@@ -121,6 +143,30 @@ class SequencedBlockingModel:
         )
 
 
+class FirstQuickSecondBlockingModel:
+    name = "first-quick-second-blocking"
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self.call_count = 0
+        self.second_started = Event()
+        self.release_second = Event()
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        with self._lock:
+            self.call_count += 1
+            call_count = self.call_count
+        if call_count == 2:
+            self.second_started.set()
+            self.release_second.wait(timeout=1.0)
+        return GenerationResult(
+            audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+            sample_rate=44100,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
 def test_start_session_passes_generation_settings_to_model():
     model = RecordingModel()
     manager = SessionManager(model=model)
@@ -130,6 +176,23 @@ def test_start_session_passes_generation_settings_to_model():
     manager.wait_for_active_task()
 
     assert model.settings == settings
+
+
+def test_session_manager_uses_injected_playback_manager():
+    playback = RecordingPlayback()
+    manager = SessionManager(model=MockModelAdapter(), playback=playback)
+
+    manager.start_session(make_request())
+    final_status = manager.wait_for_active_task()
+    manager.pause_session()
+    manager.resume_session()
+    manager.stop_session()
+
+    assert final_status.state == BackendState.PLAYING
+    assert playback.loaded is not None
+    assert playback.paused is True
+    assert playback.resumed is True
+    assert playback.stopped is True
 
 
 def test_stop_session_keeps_stopped_status_after_generation_finishes():
@@ -160,6 +223,34 @@ def test_stop_session_clears_loaded_playback():
     assert status.state == BackendState.IDLE
     assert manager.playback.current is None
     assert manager.playback.paused is False
+
+
+def test_starting_new_session_stops_existing_playback():
+    model = FirstQuickSecondBlockingModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    first_status = manager.wait_for_active_task()
+    assert first_status.state == BackendState.PLAYING
+    assert manager.playback.current is not None
+
+    second_status = manager.start_session(make_request())
+
+    assert second_status.state == BackendState.GENERATING
+    assert manager.playback.current is None
+
+    model.release_second.set()
+    final_status = manager.wait_for_active_task()
+    assert final_status.state == BackendState.PLAYING
+
+
+def test_resume_without_loaded_audio_does_not_report_playing():
+    manager = SessionManager(model=MockModelAdapter())
+
+    status = manager.resume_session()
+
+    assert status.state == BackendState.IDLE
+    assert status.message == "ready"
 
 
 def test_new_session_ignores_previous_task_completion():

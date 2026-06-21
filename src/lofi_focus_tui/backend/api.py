@@ -1,8 +1,10 @@
 import uvicorn
 from fastapi import FastAPI
 
+from lofi_focus_tui.audio.playback import PlaybackManager
+from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
 from lofi_focus_tui.backend.session_manager import SessionManager
-from lofi_focus_tui.config import GenerationConfig, load_config
+from lofi_focus_tui.config import GenerationConfig, PlaybackConfig, load_config
 from lofi_focus_tui.domain import BackendStatus, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.base import ModelAdapter
@@ -48,6 +50,7 @@ def main() -> None:
                 model=_build_model(config.generation),
                 generation_defaults=config.generation.to_settings(),
                 render_seconds_limit=config.generation.chunk_seconds,
+                playback=_build_playback(config.playback),
             )
         ),
         host=config.server.host,
@@ -61,3 +64,8 @@ def _build_model(config: GenerationConfig) -> ModelAdapter:
     if config.backend == "ace-step":
         return AceStepAdapter(checkpoint_path=config.checkpoint_path)
     raise ValueError(f"Unsupported generation backend: {config.backend}")
+
+
+def _build_playback(config: PlaybackConfig) -> PlaybackManager:
+    player = SoundDevicePlayer() if SoundDevicePlayer.available() else NullPlayer()
+    return PlaybackManager(player=player, volume=config.volume)

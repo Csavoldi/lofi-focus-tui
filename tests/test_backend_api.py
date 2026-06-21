@@ -1,8 +1,10 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lofi_focus_tui.backend.api import create_app
+from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
+from lofi_focus_tui.backend.api import _build_playback, create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
+from lofi_focus_tui.config import PlaybackConfig
 from lofi_focus_tui.generation.mock import MockModelAdapter
 
 
@@ -64,3 +66,21 @@ async def test_status_endpoint_reports_playing_after_task_completes():
     assert status_response.status_code == 200
     assert status_response.json()["state"] == "playing"
     assert status_response.json()["progress"] == 1.0
+
+
+def test_build_playback_uses_null_player_without_sounddevice(monkeypatch):
+    monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: False))
+
+    playback = _build_playback(PlaybackConfig(volume=0.25))
+
+    assert isinstance(playback.player, NullPlayer)
+    assert playback.volume == 0.25
+
+
+def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):
+    monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: True))
+
+    playback = _build_playback(PlaybackConfig(volume=0.5))
+
+    assert isinstance(playback.player, SoundDevicePlayer)
+    assert playback.volume == 0.5
