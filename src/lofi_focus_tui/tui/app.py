@@ -20,7 +20,12 @@ class LofiFocusApp(App[None]):
     def __init__(self, backend_client: BackendClient | None = None) -> None:
         super().__init__()
         self.backend_client = backend_client or BackendClient()
-        self.status = BackendStatus(state="idle", message="starting", backend="local", device="unknown")
+        self.status = BackendStatus(
+            state="idle",
+            message="starting",
+            backend="local",
+            device="unknown",
+        )
 
     def compose(self) -> ComposeResult:
         yield Static(self._render_status(), id="status")

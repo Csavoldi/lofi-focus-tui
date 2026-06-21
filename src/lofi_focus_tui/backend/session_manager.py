@@ -21,7 +21,10 @@ class SessionManager:
         safe_request = request.model_copy(update={"style_tags": map_style_tags(request.style_tags)})
         plan = expand_preset(safe_request)
         blueprint = create_blueprint(plan)
-        duration_seconds = min(device.recommended_render_seconds or 30, request.duration_minutes * 60)
+        duration_seconds = min(
+            device.recommended_render_seconds or 30,
+            request.duration_minutes * 60,
+        )
         result = self.model.generate(blueprint, duration_seconds=duration_seconds)
         self.playback.load(result)
         self._status = BackendStatus(

@@ -10,7 +10,10 @@ def expand_preset(request: SessionRequest) -> SessionPlan:
 
     return SessionPlan(
         session_id=str(uuid4()),
-        seed=abs(hash((request.preset, request.duration_minutes, tuple(request.style_tags)))) % 2**31,
+        seed=abs(
+            hash((request.preset, request.duration_minutes, tuple(request.style_tags)))
+        )
+        % 2**31,
         preset=request.preset,
         duration_minutes=request.duration_minutes,
         energy=request.energy,

@@ -89,7 +89,11 @@ class AceStepAdapter:
             audio=audio,
             sample_rate=sample_rate,
             duration_seconds=duration_seconds,
-            metadata={"session_id": blueprint.session_id, "backend": self.name, "path": str(save_path)},
+            metadata={
+                "session_id": blueprint.session_id,
+                "backend": self.name,
+                "path": str(save_path),
+            },
         )
 
 

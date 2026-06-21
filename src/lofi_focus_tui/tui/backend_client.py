@@ -1,4 +1,4 @@
-from httpx import AsyncClient, AsyncBaseTransport, HTTPError
+from httpx import AsyncBaseTransport, AsyncClient, HTTPError
 
 from lofi_focus_tui.domain import BackendStatus, SessionRequest
 
@@ -18,7 +18,12 @@ class BackendClient:
                 response = await client.get("/status")
                 response.raise_for_status()
         except HTTPError:
-            return BackendStatus(state="error", message="backend unavailable", backend="offline", device="unknown")
+            return BackendStatus(
+                state="error",
+                message="backend unavailable",
+                backend="offline",
+                device="unknown",
+            )
         return BackendStatus.model_validate(response.json())
 
     async def start_session(self, request: SessionRequest) -> BackendStatus:
@@ -27,5 +32,10 @@ class BackendClient:
                 response = await client.post("/sessions", json=request.model_dump(mode="json"))
                 response.raise_for_status()
         except HTTPError:
-            return BackendStatus(state="error", message="backend unavailable", backend="offline", device="unknown")
+            return BackendStatus(
+                state="error",
+                message="backend unavailable",
+                backend="offline",
+                device="unknown",
+            )
         return BackendStatus.model_validate(response.json())

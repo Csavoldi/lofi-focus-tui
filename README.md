@@ -18,6 +18,13 @@ python -m pip install -e ".[dev]"
 pytest -v
 ```
 
+## Quality Checks
+
+```bash
+ruff check src tests
+pytest -v
+```
+
 ## Run
 
 Start the backend:

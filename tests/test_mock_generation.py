@@ -5,7 +5,9 @@ from lofi_focus_tui.presets import expand_preset
 
 
 def test_mock_adapter_returns_deterministic_audio_metadata():
-    plan = expand_preset(SessionRequest(preset="deep_work", duration_minutes=30, energy=EnergyLevel.STEADY))
+    plan = expand_preset(
+        SessionRequest(preset="deep_work", duration_minutes=30, energy=EnergyLevel.STEADY)
+    )
     blueprint = create_blueprint(plan)
 
     result = MockModelAdapter().generate(blueprint, duration_seconds=10)

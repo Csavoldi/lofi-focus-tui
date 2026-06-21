@@ -22,15 +22,15 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 0 in progress
-- Baseline verification status: not run for this plan-only change
+- Implementation status: Milestone 0 complete
+- Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
 ## Progress Table
 
 | Status | Milestone | Outcome | Suggested Commit | Commit Hash |
 | --- | --- | --- | --- | --- |
-| [/] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: document roadmap and baseline workflow` |  |
+| [x] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: establish baseline quality checks` |  |
 | [ ] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` |  |
 | [ ] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` |  |
 | [ ] | 3. Real playback backend | Generated audio can be played, paused, resumed, stopped, and faded | `feat(audio): add local playback backend` |  |
@@ -105,7 +105,7 @@ Add matching tests:
 
 ## Milestone 0: Repo Hygiene and Baseline
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Establish a known-good baseline before changing behavior.
 
@@ -117,7 +117,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Confirm the current test suite passes.
+- [x] Confirm the current test suite passes.
 
   Run:
 
@@ -128,7 +128,7 @@ Add matching tests:
 
   Expected: all existing tests pass.
 
-- [ ] Add lint tooling if the project accepts it.
+- [x] Add lint tooling if the project accepts it.
 
   Preferred `pyproject.toml` additions:
 
@@ -148,7 +148,7 @@ Add matching tests:
   select = ["E", "F", "I", "W"]
   ```
 
-- [ ] Verify formatting/lint command.
+- [x] Verify formatting/lint command.
 
   Run:
 
@@ -159,7 +159,7 @@ Add matching tests:
 
   Expected: `ruff` reports no errors and pytest passes.
 
-- [ ] Update `README.md` with the development baseline.
+- [x] Update `README.md` with the development baseline.
 
   Add a short section:
 
@@ -172,11 +172,11 @@ Add matching tests:
   ```
   ````
 
-- [ ] Commit the roadmap and baseline documentation.
+- [x] Commit the roadmap and baseline documentation.
 
   ```bash
   git add README.md pyproject.toml docs/superpowers/plans/2026-06-20-lofi-focus-tui-roadmap.md
-  git commit -m "chore: document roadmap and baseline workflow"
+  git commit -m "chore: establish baseline quality checks"
   ```
 
 **Acceptance Criteria:**

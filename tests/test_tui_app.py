@@ -4,6 +4,12 @@ from lofi_focus_tui.domain import BackendStatus
 from lofi_focus_tui.tui.app import LofiFocusApp
 
 
+def status_text(app: LofiFocusApp) -> str:
+    status = app.query_one("#status")
+    renderable = getattr(status, "renderable", status.render())
+    return str(renderable)
+
+
 class FakeBackendClient:
     def __init__(self) -> None:
         self.started = False
@@ -27,7 +33,7 @@ async def test_tui_renders_session_labels():
     app = LofiFocusApp(backend_client=FakeBackendClient())
 
     async with app.run_test() as pilot:
-        text = pilot.app.query_one("#status").content
+        text = status_text(pilot.app)
 
     assert "focus:" in str(text)
     assert "backend: mock" in str(text)
@@ -40,7 +46,7 @@ async def test_tui_start_action_updates_session_state():
 
     async with app.run_test() as pilot:
         await pilot.app.action_start_session()
-        text = pilot.app.query_one("#status").content
+        text = status_text(pilot.app)
 
     assert backend_client.started is True
     assert "state: playing" in str(text)
