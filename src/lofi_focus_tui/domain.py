@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lofi_focus_tui.generation.settings import GenerationSettings
+
 
 class EnergyLevel(StrEnum):
     LOW = "low"
@@ -23,6 +25,8 @@ class SessionRequest(BaseModel):
     style_tags: list[str] = Field(default_factory=list)
     avoid_tags: list[str] = Field(default_factory=list)
     device_preference: str = "auto"
+    generation: GenerationSettings | None = None
+    seed: int | None = Field(default=None, ge=0)
 
 
 class SessionPlan(BaseModel):

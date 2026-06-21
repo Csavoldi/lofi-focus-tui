@@ -1,0 +1,16 @@
+[server]
+host = "127.0.0.1"
+port = 8765
+
+[generation]
+backend = "mock"
+output_format = "wav"
+inference_steps = 27
+guidance_scale = 15.0
+batch_size = 1
+chunk_seconds = 30
+checkpoint_path = ""
+
+[playback]
+volume = 0.8
+fade_seconds = 1.5

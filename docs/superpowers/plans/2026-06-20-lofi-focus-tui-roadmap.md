@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 0 complete
+- Implementation status: Milestone 1 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -31,7 +31,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | Status | Milestone | Outcome | Suggested Commit | Commit Hash |
 | --- | --- | --- | --- | --- |
 | [x] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: establish baseline quality checks` | 99d39f7486accd09292cb2b772ff5e42bcd224a4 |
-| [ ] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` |  |
+| [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` |  |
 | [ ] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` |  |
 | [ ] | 3. Real playback backend | Generated audio can be played, paused, resumed, stopped, and faded | `feat(audio): add local playback backend` |  |
 | [ ] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` |  |
@@ -189,7 +189,7 @@ Add matching tests:
 
 ## Milestone 1: Config and Generation Settings
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Move hard-coded defaults into validated config and model settings.
 
@@ -207,7 +207,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add `AppConfig` in `src/lofi_focus_tui/config.py`.
+- [x] Add `AppConfig` in `src/lofi_focus_tui/config.py`.
 
   Required model shape:
 
@@ -247,7 +247,7 @@ Add matching tests:
   ]
   ```
 
-- [ ] Implement `load_config(path: Path | None = None) -> AppConfig`.
+- [x] Implement `load_config(path: Path | None = None) -> AppConfig`.
 
   Behavior:
 
@@ -258,7 +258,7 @@ Add matching tests:
   - Override backend with `LOFI_BACKEND`.
   - Override ACE-Step checkpoint path with `ACESTEP_CHECKPOINT_PATH` once that field exists.
 
-- [ ] Add `tests/test_config.py`.
+- [x] Add `tests/test_config.py`.
 
   Required tests:
 
@@ -299,7 +299,7 @@ Add matching tests:
       assert config.generation.backend == "mock"
   ```
 
-- [ ] Add `GenerationSettings` in `src/lofi_focus_tui/generation/settings.py`.
+- [x] Add `GenerationSettings` in `src/lofi_focus_tui/generation/settings.py`.
 
   Required fields:
 
@@ -327,7 +327,7 @@ Add matching tests:
           return value
   ```
 
-- [ ] Extend `SessionRequest` in `domain.py`.
+- [x] Extend `SessionRequest` in `domain.py`.
 
   Add optional settings:
 
@@ -338,11 +338,11 @@ Add matching tests:
 
   Import `GenerationSettings` from `lofi_focus_tui.generation.settings`.
 
-- [ ] Make `presets.expand_preset()` respect `request.seed`.
+- [x] Make `presets.expand_preset()` respect `request.seed`.
 
   If `request.seed` is provided, use it. Otherwise keep the current deterministic hash behavior.
 
-- [ ] Update `AceStepAdapter.generate()` to accept settings.
+- [x] Update `AceStepAdapter.generate()` to accept settings.
 
   Update the `ModelAdapter` protocol first:
 
@@ -365,11 +365,11 @@ Add matching tests:
 
   Use settings for `infer_step`, `guidance_scale`, `scheduler_type`, `cfg_type`, `omega_scale`, and output extension.
 
-- [ ] Update `MockModelAdapter.generate()` to match the new protocol.
+- [x] Update `MockModelAdapter.generate()` to match the new protocol.
 
   It should ignore settings except for seed if provided.
 
-- [ ] Add `config.example.toml`.
+- [x] Add `config.example.toml`.
 
   ```toml
   [server]
@@ -389,7 +389,7 @@ Add matching tests:
   fade_seconds = 1.5
   ```
 
-- [ ] Verify tests.
+- [x] Verify tests.
 
   Run:
 
@@ -400,7 +400,7 @@ Add matching tests:
 
   Expected: all tests pass.
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add config.example.toml src tests

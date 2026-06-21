@@ -25,7 +25,11 @@ class SessionManager:
             device.recommended_render_seconds or 30,
             request.duration_minutes * 60,
         )
-        result = self.model.generate(blueprint, duration_seconds=duration_seconds)
+        result = self.model.generate(
+            blueprint,
+            duration_seconds=duration_seconds,
+            settings=request.generation,
+        )
         self.playback.load(result)
         self._status = BackendStatus(
             state="playing",

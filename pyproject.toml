@@ -8,6 +8,7 @@ dependencies = [
   "httpx>=0.27",
   "numpy>=1.26",
   "pydantic>=2.8",
+  "tomli>=2.0; python_version < '3.11'",
   "textual>=0.80",
   "uvicorn>=0.30",
 ]

@@ -30,3 +30,16 @@ def test_expand_deep_work_preset_has_focus_constraints():
     assert [phase.value for phase in plan.phases] == ["warmup", "steady_work", "cooldown"]
     assert "sudden drops" in plan.avoid_traits
     assert "stable tempo" in plan.continuity_requirements
+
+
+def test_expand_preset_uses_request_seed_when_provided():
+    plan = expand_preset(
+        SessionRequest(
+            preset="deep_work",
+            duration_minutes=90,
+            energy=EnergyLevel.STEADY,
+            seed=12345,
+        )
+    )
+
+    assert plan.seed == 12345
