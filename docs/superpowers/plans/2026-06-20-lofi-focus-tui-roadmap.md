@@ -31,7 +31,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | Status | Milestone | Outcome | Suggested Commit | Commit Hash |
 | --- | --- | --- | --- | --- |
 | [x] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: establish baseline quality checks` | 99d39f7486accd09292cb2b772ff5e42bcd224a4 |
-| [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` |  |
+| [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` | f80a81be7bf6b38592180be9a42e1491d201e8ed |
 | [ ] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` |  |
 | [ ] | 3. Real playback backend | Generated audio can be played, paused, resumed, stopped, and faded | `feat(audio): add local playback backend` |  |
 | [ ] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` |  |
