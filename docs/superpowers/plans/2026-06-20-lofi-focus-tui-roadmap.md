@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 2 complete
+- Implementation status: Milestone 3 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -33,7 +33,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: establish baseline quality checks` | 99d39f7486accd09292cb2b772ff5e42bcd224a4 |
 | [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` | a2c03ef5b3a9e248e1159c16058d484bd6b1b5aa |
 | [x] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` | 376cd677131f21aeb48bd1bff064112c2f0e5130 |
-| [ ] | 3. Real playback backend | Generated audio can be played, paused, resumed, stopped, and faded | `feat(audio): add local playback backend` |  |
+| [x] | 3. Real playback backend | Generated audio can be played, paused, resumed, and stopped | `feat(audio): add local playback backend` | f84d57491338509c49d3ef179eb3561fc8cc4e83 |
 | [ ] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` |  |
 | [ ] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` |  |
 | [ ] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` |  |
@@ -559,7 +559,7 @@ Add matching tests:
 
 ## Milestone 3: Real Playback Backend
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Audio loaded by the backend should be audible and controllable.
 
@@ -573,7 +573,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Choose the playback dependency.
+- [x] Choose the playback dependency.
 
   Preferred first implementation:
 
@@ -586,7 +586,7 @@ Add matching tests:
 
   Keep tests dependency-free by injecting a fake player.
 
-- [ ] Create `Player` protocol in `audio/player.py`.
+- [x] Create `Player` protocol in `audio/player.py`.
 
   ```python
   from typing import Protocol
@@ -607,11 +607,11 @@ Add matching tests:
           ...
   ```
 
-- [ ] Add `NullPlayer` for tests and no-playback environments.
+- [x] Add `NullPlayer` for tests and no-playback environments.
 
   It records last audio, sample rate, volume, and state.
 
-- [ ] Add `SoundDevicePlayer`.
+- [x] Add `SoundDevicePlayer`.
 
   Requirements:
 
@@ -620,7 +620,7 @@ Add matching tests:
   - Apply volume before playback.
   - Stop any existing playback before starting a new track.
 
-- [ ] Refactor `PlaybackManager`.
+- [x] Refactor `PlaybackManager`.
 
   Constructor:
 
@@ -634,11 +634,11 @@ Add matching tests:
 
   `load()` should call `self.player.play(result.audio, result.sample_rate, self.volume)`.
 
-- [ ] Make `stop_session()` stop playback.
+- [x] Make `stop_session()` stop playback.
 
   In `SessionManager.stop_session()`, call `self.playback.stop()`.
 
-- [ ] Add playback tests.
+- [x] Add playback tests.
 
   Required assertions:
 
@@ -648,7 +648,7 @@ Add matching tests:
   - `resume()` calls `player.resume`.
   - `stop()` clears paused state and calls `player.stop`.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -657,7 +657,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add pyproject.toml src/lofi_focus_tui/audio src/lofi_focus_tui/backend/session_manager.py tests
