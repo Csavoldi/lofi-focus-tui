@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport
 
 from lofi_focus_tui.backend.api import create_app
+from lofi_focus_tui.config import ServerConfig
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.tui.backend_client import BackendClient
 
@@ -31,3 +32,9 @@ async def test_backend_client_starts_session_through_api():
 
     assert status.state == "playing"
     assert status.active_session_id is not None
+
+
+def test_backend_client_uses_server_config_base_url():
+    client = BackendClient.from_config(ServerConfig(host="0.0.0.0", port=9999))
+
+    assert client.base_url == "http://0.0.0.0:9999"

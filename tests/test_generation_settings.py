@@ -17,9 +17,10 @@ def test_generation_settings_defaults_match_expected_values():
     assert settings.omega_scale == 10.0
 
 
-def test_invalid_output_format_raises_value_error():
+@pytest.mark.parametrize("output_format", ["mp3", "flac", "opus", "aac", "ogg"])
+def test_non_wav_output_format_raises_value_error(output_format):
     with pytest.raises(ValidationError):
-        GenerationSettings(output_format="ogg")
+        GenerationSettings(output_format=output_format)
 
 
 def test_valid_output_formats_are_accepted():
@@ -27,6 +28,8 @@ def test_valid_output_formats_are_accepted():
         settings = GenerationSettings(output_format=output_format)
 
         assert settings.output_format == output_format
+
+    assert VALID_OUTPUT_FORMATS == ("wav",)
 
 
 @pytest.mark.parametrize(

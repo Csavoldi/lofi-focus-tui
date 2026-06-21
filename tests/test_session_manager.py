@@ -29,9 +29,11 @@ class RecordingModel:
 
     def __init__(self):
         self.settings = None
+        self.duration_seconds = None
 
     def generate(self, blueprint, duration_seconds, settings=None):
         self.settings = settings
+        self.duration_seconds = duration_seconds
         return GenerationResult(
             audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
             sample_rate=44100,
@@ -55,3 +57,52 @@ def test_start_session_passes_generation_settings_to_model():
     )
 
     assert model.settings == settings
+
+
+def test_start_session_uses_generation_defaults_when_request_omits_settings():
+    model = RecordingModel()
+    defaults = GenerationSettings(inference_steps=18, seed=77)
+    manager = SessionManager(model=model, generation_defaults=defaults)
+
+    manager.start_session(
+        SessionRequest(
+            preset="deep_work",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+
+    assert model.settings == defaults
+
+
+def test_start_session_request_generation_overrides_defaults():
+    model = RecordingModel()
+    defaults = GenerationSettings(inference_steps=18, seed=77)
+    request_settings = GenerationSettings(inference_steps=12, seed=99)
+    manager = SessionManager(model=model, generation_defaults=defaults)
+
+    manager.start_session(
+        SessionRequest(
+            preset="deep_work",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            generation=request_settings,
+        )
+    )
+
+    assert model.settings == request_settings
+
+
+def test_start_session_uses_configured_render_seconds_limit():
+    model = RecordingModel()
+    manager = SessionManager(model=model, render_seconds_limit=12)
+
+    manager.start_session(
+        SessionRequest(
+            preset="deep_work",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+
+    assert model.duration_seconds == 12

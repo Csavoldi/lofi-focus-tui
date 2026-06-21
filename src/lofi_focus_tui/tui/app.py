@@ -19,7 +19,7 @@ class LofiFocusApp(App[None]):
 
     def __init__(self, backend_client: BackendClient | None = None) -> None:
         super().__init__()
-        self.backend_client = backend_client or BackendClient()
+        self.backend_client = backend_client or BackendClient.from_config()
         self.status = BackendStatus(
             state="idle",
             message="starting",

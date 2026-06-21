@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 
-VALID_OUTPUT_FORMATS = ("wav", "mp3", "flac", "opus", "aac")
+VALID_OUTPUT_FORMATS = ("wav",)
 
 
 class GenerationSettings(BaseModel):

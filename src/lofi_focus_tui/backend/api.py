@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from lofi_focus_tui.backend.session_manager import SessionManager
-from lofi_focus_tui.config import load_config
+from lofi_focus_tui.config import GenerationConfig, load_config
 from lofi_focus_tui.domain import BackendStatus, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.base import ModelAdapter
@@ -43,14 +43,21 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
 def main() -> None:
     config = load_config()
     uvicorn.run(
-        create_app(manager=SessionManager(model=_build_model(config.generation.backend))),
+        create_app(
+            manager=SessionManager(
+                model=_build_model(config.generation),
+                generation_defaults=config.generation.to_settings(),
+                render_seconds_limit=config.generation.chunk_seconds,
+            )
+        ),
         host=config.server.host,
         port=config.server.port,
     )
 
 
-def _build_model(backend: str) -> ModelAdapter:
-    if backend == "ace-step":
-        config = load_config()
-        return AceStepAdapter(checkpoint_path=config.generation.checkpoint_path)
-    return MockModelAdapter()
+def _build_model(config: GenerationConfig) -> ModelAdapter:
+    if config.backend == "mock":
+        return MockModelAdapter()
+    if config.backend == "ace-step":
+        return AceStepAdapter(checkpoint_path=config.checkpoint_path)
+    raise ValueError(f"Unsupported generation backend: {config.backend}")

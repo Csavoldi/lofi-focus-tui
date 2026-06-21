@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from lofi_focus_tui.generation.settings import GenerationSettings
 
 try:
     import tomllib
@@ -16,13 +18,22 @@ class ServerConfig(BaseModel):
 
 
 class GenerationConfig(BaseModel):
-    backend: str = "mock"
-    output_format: str = "wav"
+    backend: Literal["mock", "ace-step"] = "mock"
+    output_format: Literal["wav"] = "wav"
     inference_steps: int = Field(default=27, ge=1, le=100)
     guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
     batch_size: int = Field(default=1, ge=1, le=8)
     chunk_seconds: int = Field(default=30, ge=10, le=600)
     checkpoint_path: str = ""
+
+    def to_settings(self, seed: int = -1) -> GenerationSettings:
+        return GenerationSettings(
+            output_format=self.output_format,
+            inference_steps=self.inference_steps,
+            guidance_scale=self.guidance_scale,
+            batch_size=self.batch_size,
+            seed=seed,
+        )
 
 
 class PlaybackConfig(BaseModel):
@@ -56,11 +67,9 @@ def load_config(path: Path | None = None) -> AppConfig:
     if checkpoint_path := os.environ.get("ACESTEP_CHECKPOINT_PATH"):
         overrides["checkpoint_path"] = checkpoint_path
     if overrides:
-        config = config.model_copy(
-            update={
-                "generation": config.generation.model_copy(update=overrides),
-            }
-        )
+        data = config.model_dump()
+        data["generation"].update(overrides)
+        config = AppConfig.model_validate(data)
     return config
 
 
