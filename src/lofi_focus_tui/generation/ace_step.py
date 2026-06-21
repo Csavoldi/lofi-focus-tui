@@ -100,6 +100,7 @@ class AceStepAdapter:
             metadata={
                 "session_id": blueprint.session_id,
                 "backend": self.name,
+                "output_path": str(save_path),
                 "path": str(save_path),
             },
         )

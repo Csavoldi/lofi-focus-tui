@@ -15,3 +15,7 @@ class PlaybackManager:
 
     def resume(self) -> None:
         self.paused = False
+
+    def stop(self) -> None:
+        self.current = None
+        self.paused = False

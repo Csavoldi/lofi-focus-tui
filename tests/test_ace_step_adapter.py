@@ -91,4 +91,5 @@ def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
     assert call["omega_scale"] == 2.5
     assert call["manual_seeds"] == "456"
     assert call["save_path"].endswith(".wav")
+    assert result.metadata["output_path"].endswith(".wav")
     assert result.metadata["path"].endswith(".wav")

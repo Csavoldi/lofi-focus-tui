@@ -23,9 +23,10 @@ class FakeBackendClient:
     async def start_session(self, request):
         self.started = True
         return BackendStatus(
-            state="playing",
-            message="playing",
+            state="generating",
+            message="generating",
             active_session_id="session-1",
+            active_task_id="task-1",
             backend="mock",
             device="cpu",
         )
@@ -52,4 +53,4 @@ async def test_tui_start_action_updates_session_state():
         text = status_text(pilot.app)
 
     assert backend_client.started is True
-    assert "state: playing" in str(text)
+    assert "state: generating" in str(text)
