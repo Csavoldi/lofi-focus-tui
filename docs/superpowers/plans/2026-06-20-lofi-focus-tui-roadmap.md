@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 3 complete
+- Implementation status: Milestone 4 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -34,7 +34,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` | a2c03ef5b3a9e248e1159c16058d484bd6b1b5aa |
 | [x] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` | 376cd677131f21aeb48bd1bff064112c2f0e5130 |
 | [x] | 3. Real playback backend | Generated audio can be played, paused, resumed, and stopped | `feat(audio): add local playback backend` | f84d57491338509c49d3ef179eb3561fc8cc4e83 |
-| [ ] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` |  |
+| [x] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` | 37743f3fff5fea12de2bf4fdb8cd49a1a5caf4f4 |
 | [ ] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` |  |
 | [ ] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` |  |
 | [ ] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` |  |
@@ -674,7 +674,7 @@ Add matching tests:
 
 ## Milestone 4: Session Controls in the TUI
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Replace the hard-coded `s` action with usable controls.
 
@@ -688,7 +688,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add backend client methods for pause, resume, and stop.
+- [x] Add backend client methods for pause, resume, and stop.
 
   Required methods:
 
@@ -698,7 +698,7 @@ Add matching tests:
   async def stop_session(self) -> BackendStatus: ...
   ```
 
-- [ ] Add periodic status polling in `LofiFocusApp`.
+- [x] Add periodic status polling in `LofiFocusApp`.
 
   On mount, call:
 
@@ -708,7 +708,7 @@ Add matching tests:
 
   Implement `refresh_status` as async and update the display from `/status`.
 
-- [ ] Replace static render with a structured layout.
+- [x] Replace static render with a structured layout.
 
   Minimum widgets:
 
@@ -716,7 +716,7 @@ Add matching tests:
   - Session panel: preset, duration, energy, style tags.
   - Controls footer: start, pause/resume, stop.
 
-- [ ] Add bindings.
+- [x] Add bindings.
 
   Required bindings:
 
@@ -730,7 +730,7 @@ Add matching tests:
   ]
   ```
 
-- [ ] Add editable defaults without building a complex wizard.
+- [x] Add editable defaults without building a complex wizard.
 
   First pass:
 
@@ -739,7 +739,7 @@ Add matching tests:
   - Preset cycles through `deep_work`, `reading`, `coding`, `wind_down`.
   - Style tags remain a comma-separated local field until a richer selector is needed.
 
-- [ ] Add TUI tests.
+- [x] Add TUI tests.
 
   Required assertions:
 
@@ -749,7 +749,7 @@ Add matching tests:
   - Stop calls the backend client.
   - Progress text updates after polling.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -758,7 +758,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add src/lofi_focus_tui/tui tests/test_tui_app.py tests/test_backend_client.py
