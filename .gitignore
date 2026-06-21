@@ -9,3 +9,4 @@ build/
 *.wav
 *.mp3
 *.flac
+.worktrees/
