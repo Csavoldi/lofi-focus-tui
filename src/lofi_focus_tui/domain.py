@@ -83,5 +83,6 @@ class BackendStatus(BaseModel):
     active_task_id: str | None = None
     output_path: str | None = None
     error: str | None = None
+    recent_sessions: list[str] = Field(default_factory=list)
     backend: str = "mock"
     device: str = "cpu"

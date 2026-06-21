@@ -45,5 +45,11 @@ def render_controls(status: BackendStatus) -> str:
     return f"s start  space {pause_label}  x stop  r refresh"
 
 
+def render_history(status: BackendStatus) -> str:
+    if not status.recent_sessions:
+        return "recent:\n-"
+    return "recent:\n" + "\n".join(status.recent_sessions[:5])
+
+
 def _enum_value(value) -> str:
     return value.value if hasattr(value, "value") else str(value)

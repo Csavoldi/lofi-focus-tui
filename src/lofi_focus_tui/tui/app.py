@@ -11,6 +11,7 @@ from lofi_focus_tui.tui.widgets import (
     cycle_value,
     parse_style_tags,
     render_controls,
+    render_history,
     render_session,
     render_status,
 )
@@ -32,7 +33,7 @@ class LofiFocusApp(App[None]):
     Screen {
         align: center middle;
     }
-    #status, #session, #controls {
+    #status, #session, #history, #controls {
         width: 64;
         height: auto;
         margin: 1 0;
@@ -65,6 +66,7 @@ class LofiFocusApp(App[None]):
             id="session",
         )
         yield Static(render_controls(self.status), id="controls")
+        yield Static(render_history(self.status), id="history")
 
     async def on_mount(self) -> None:
         await self.refresh_status()
@@ -126,3 +128,4 @@ class LofiFocusApp(App[None]):
             )
         )
         self.query_one("#controls", Static).update(render_controls(self.status))
+        self.query_one("#history", Static).update(render_history(self.status))

@@ -6,7 +6,7 @@ from lofi_focus_tui.tui.app import LofiFocusApp
 
 def status_text(app: LofiFocusApp) -> str:
     parts = []
-    for selector in ("#status", "#session", "#controls"):
+    for selector in ("#status", "#session", "#history", "#controls"):
         widget = app.query_one(selector)
         if hasattr(widget, "renderable"):
             renderable = widget.renderable
@@ -142,6 +142,28 @@ async def test_tui_refresh_status_updates_progress_text():
 
     assert "progress: 42%" in str(text)
     assert "message: rendering" in str(text)
+
+
+@pytest.mark.asyncio
+async def test_tui_renders_recent_history():
+    backend_client = FakeBackendClient()
+    backend_client.statuses = [
+        BackendStatus(
+            state="playing",
+            message="playing",
+            backend="mock",
+            device="cpu",
+            recent_sessions=["abc12345 deep_work", "def67890 reading *"],
+        )
+    ]
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        text = status_text(pilot.app)
+
+    assert "recent:" in str(text)
+    assert "abc12345 deep_work" in str(text)
+    assert "def67890 reading *" in str(text)
 
 
 @pytest.mark.asyncio

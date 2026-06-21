@@ -1,12 +1,16 @@
+import json
+from pathlib import Path
 from threading import Event, Lock
 
 import numpy as np
 
+from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.backend.session_manager import SessionManager
 from lofi_focus_tui.domain import BackendState, EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.base import GenerationResult
 from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
+from lofi_focus_tui.history import HistoryStore
 
 
 def make_request(generation=None):
@@ -298,6 +302,33 @@ def test_generation_status_uses_legacy_path_metadata_as_output_path():
     final_status = manager.wait_for_active_task()
 
     assert final_status.output_path == "rendered.wav"
+
+
+def test_successful_generation_persists_output_and_history(tmp_path):
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=MockModelAdapter(),
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    assert final_status.output_path is not None
+    audio_path = Path(final_status.output_path)
+    assert audio_path.exists()
+    record = history_store.list(limit=1)[0]
+    assert record.audio_path == str(audio_path)
+    assert record.preset == "deep_work"
+    assert final_status.recent_sessions == [f"{record.session_id[:8]} deep_work"]
+    metadata = json.loads(Path(record.metadata_path).read_text(encoding="utf-8"))
+    assert metadata["request"]["preset"] == "deep_work"
+    assert metadata["blueprint"]["session_id"] == record.session_id
+    assert metadata["seed"] == record.seed
 
 
 def test_start_session_uses_generation_defaults_when_request_omits_settings():
