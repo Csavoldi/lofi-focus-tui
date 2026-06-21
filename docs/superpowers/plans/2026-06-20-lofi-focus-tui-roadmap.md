@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 1 complete
+- Implementation status: Milestone 2 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -32,7 +32,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | --- | --- | --- | --- | --- |
 | [x] | 0. Repo hygiene and baseline | Local dev workflow and tests are reproducible | `chore: establish baseline quality checks` | 99d39f7486accd09292cb2b772ff5e42bcd224a4 |
 | [x] | 1. Config and generation settings | Sessions and ACE-Step parameters are validated and configurable | `feat(config): add app config and generation settings` | a2c03ef5b3a9e248e1159c16058d484bd6b1b5aa |
-| [ ] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` |  |
+| [x] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` | 376cd677131f21aeb48bd1bff064112c2f0e5130 |
 | [ ] | 3. Real playback backend | Generated audio can be played, paused, resumed, stopped, and faded | `feat(audio): add local playback backend` |  |
 | [ ] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` |  |
 | [ ] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` |  |
@@ -418,7 +418,7 @@ Add matching tests:
 
 ## Milestone 2: Async Backend Task State
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Starting a session should not block the TUI while generation runs.
 
@@ -434,7 +434,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add `BackendState` enum in `domain.py`.
+- [x] Add `BackendState` enum in `domain.py`.
 
   Values:
 
@@ -449,7 +449,7 @@ Add matching tests:
       ERROR = "error"
   ```
 
-- [ ] Extend `BackendStatus`.
+- [x] Extend `BackendStatus`.
 
   Add:
 
@@ -460,7 +460,7 @@ Add matching tests:
   error: str | None = None
   ```
 
-- [ ] Create `GenerationTask` in `backend/tasks.py`.
+- [x] Create `GenerationTask` in `backend/tasks.py`.
 
   Required model:
 
@@ -488,7 +488,7 @@ Add matching tests:
           self.updated_at = monotonic()
   ```
 
-- [ ] Refactor `SessionManager.start_session()` into async task startup.
+- [x] Refactor `SessionManager.start_session()` into async task startup.
 
   Target behavior:
 
@@ -498,7 +498,7 @@ Add matching tests:
   - Return `BackendStatus(state="generating", progress=0.0)` quickly.
   - Run generation in a background thread using `asyncio.to_thread()` or `concurrent.futures`.
 
-- [ ] Add `SessionManager.poll()` or keep `health()` as the status source.
+- [x] Add `SessionManager.poll()` or keep `health()` as the status source.
 
   `/status` should report:
 
@@ -506,11 +506,11 @@ Add matching tests:
   - `playing` once audio is loaded.
   - `error` with message if generation raises.
 
-- [ ] Update FastAPI endpoints to support async manager methods.
+- [x] Update FastAPI endpoints to support async manager methods.
 
   `start_session` can remain `async def`; it should await the manager startup method if needed.
 
-- [ ] Add tests with a controllable fake model.
+- [x] Add tests with a controllable fake model.
 
   Required behavior:
 
@@ -533,7 +533,7 @@ Add matching tests:
 
   Assert that starting a session first returns `generating` and a later status becomes `playing`.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -542,7 +542,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add src/lofi_focus_tui/backend src/lofi_focus_tui/domain.py src/lofi_focus_tui/tui/backend_client.py tests
