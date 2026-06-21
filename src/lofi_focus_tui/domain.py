@@ -1,4 +1,11 @@
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:  # pragma: no cover - compatibility for Python 3.10
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        pass
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -16,6 +23,16 @@ class SessionPhase(StrEnum):
     WARMUP = "warmup"
     STEADY_WORK = "steady_work"
     COOLDOWN = "cooldown"
+
+
+class BackendState(StrEnum):
+    IDLE = "idle"
+    PLANNING = "planning"
+    GENERATING = "generating"
+    READY = "ready"
+    PLAYING = "playing"
+    PAUSED = "paused"
+    ERROR = "error"
 
 
 class SessionRequest(BaseModel):
@@ -59,8 +76,12 @@ class CompositionBlueprint(BaseModel):
 
 
 class BackendStatus(BaseModel):
-    state: Literal["idle", "planning", "generating", "playing", "paused", "error"]
+    state: BackendState
     message: str
     active_session_id: str | None = None
+    progress: float = Field(default=0.0, ge=0.0, le=1.0)
+    active_task_id: str | None = None
+    output_path: str | None = None
+    error: str | None = None
     backend: str = "mock"
     device: str = "cpu"
