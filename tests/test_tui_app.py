@@ -6,7 +6,10 @@ from lofi_focus_tui.tui.app import LofiFocusApp
 
 def status_text(app: LofiFocusApp) -> str:
     status = app.query_one("#status")
-    renderable = getattr(status, "renderable", status.render())
+    if hasattr(status, "renderable"):
+        renderable = status.renderable
+    else:
+        renderable = status.render()
     return str(renderable)
 
 
