@@ -4,8 +4,10 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.uat/
 dist/
 build/
 *.wav
 *.mp3
 *.flac
+.worktrees/

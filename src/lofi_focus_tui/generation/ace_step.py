@@ -1,12 +1,11 @@
 import importlib.util
 import os
-import wave
 from pathlib import Path
 
-import numpy as np
-
+from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.base import GenerationResult
+from lofi_focus_tui.generation.settings import GenerationSettings
 
 
 class AceStepUnavailableError(RuntimeError):
@@ -57,21 +56,28 @@ class AceStepAdapter:
         )
         return self._pipeline
 
-    def generate(self, blueprint: CompositionBlueprint, duration_seconds: int) -> GenerationResult:
+    def generate(
+        self,
+        blueprint: CompositionBlueprint,
+        duration_seconds: int,
+        settings: GenerationSettings | None = None,
+    ) -> GenerationResult:
         pipeline = self._load_pipeline()
-        save_path = self.output_dir / f"{blueprint.session_id}.wav"
+        settings = settings or GenerationSettings(seed=blueprint.seed)
+        seed = settings.seed if settings.seed >= 0 else blueprint.seed
+        save_path = self.output_dir / f"{blueprint.session_id}.{settings.output_format}"
         prompt = _blueprint_to_prompt(blueprint)
 
         pipeline(
             audio_duration=duration_seconds,
             prompt=prompt,
             lyrics="",
-            infer_step=27,
-            guidance_scale=15.0,
-            scheduler_type="euler",
-            cfg_type="apg",
-            omega_scale=10.0,
-            manual_seeds=str(blueprint.seed),
+            infer_step=settings.inference_steps,
+            guidance_scale=settings.guidance_scale,
+            scheduler_type=settings.scheduler_type,
+            cfg_type=settings.cfg_type,
+            omega_scale=settings.omega_scale,
+            manual_seeds=str(seed),
             guidance_interval=0.5,
             guidance_interval_decay=0.0,
             min_guidance_scale=3.0,
@@ -82,14 +88,20 @@ class AceStepAdapter:
             guidance_scale_text=0.0,
             guidance_scale_lyric=0.0,
             save_path=str(save_path),
+            batch_size=settings.batch_size,
         )
 
-        audio, sample_rate = _read_wav(save_path)
+        audio, sample_rate = read_wav_file(save_path)
         return GenerationResult(
             audio=audio,
             sample_rate=sample_rate,
             duration_seconds=duration_seconds,
-            metadata={"session_id": blueprint.session_id, "backend": self.name, "path": str(save_path)},
+            metadata={
+                "session_id": blueprint.session_id,
+                "backend": self.name,
+                "output_path": str(save_path),
+                "path": str(save_path),
+            },
         )
 
 
@@ -113,14 +125,3 @@ def _default_output_dir() -> Path:
     if cache_root:
         return Path(cache_root) / "lofi-focus-tui" / "ace-step"
     return Path.cwd() / ".cache" / "lofi-focus-tui" / "ace-step"
-
-
-def _read_wav(path: Path) -> tuple[np.ndarray, int]:
-    with wave.open(str(path), "rb") as wav:
-        channels = wav.getnchannels()
-        sample_rate = wav.getframerate()
-        frames = wav.readframes(wav.getnframes())
-        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-    if channels > 1:
-        audio = audio.reshape(-1, channels).mean(axis=1)
-    return audio, sample_rate
