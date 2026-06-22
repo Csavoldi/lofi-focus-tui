@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 7 complete
+- Implementation status: Milestone 8 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -38,7 +38,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` | 635b8f230e09acbee240330351d7a78be0fbcc83 |
 | [x] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` | 5b0517eac8d20b9ce49781bc94970c254ea24fc0 |
 | [x] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` | 5e35156f6a6241b989711e55b4c9ae17374c4449 |
-| [ ] | 8. Quality, docs, and release polish | CLI diagnostics, CI checks, docs, and user-facing workflows are complete | `docs: add usage guide and release checklist` |  |
+| [x] | 8. Quality, docs, and release polish | CLI diagnostics, CI checks, docs, and user-facing workflows are complete | `docs: add usage guide and release checklist` | 910edd325a8d04384d03bc8f67b220998ecdc32b |
 
 ## Reference Inputs
 
@@ -1130,7 +1130,7 @@ Add matching tests:
 
 ## Milestone 8: Quality, Docs, and Release Polish
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Make the app understandable, diagnosable, and releasable.
 
@@ -1146,7 +1146,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add `lofi doctor`.
+- [x] Add `lofi doctor`.
 
   Diagnostics checks:
 
@@ -1159,7 +1159,7 @@ Add matching tests:
   - Output directory writable.
   - GPU/device summary.
 
-- [ ] Update CLI.
+- [x] Update CLI.
 
   Commands:
 
@@ -1167,7 +1167,7 @@ Add matching tests:
   - `lofi-backend`: run FastAPI backend.
   - `lofi-doctor`: run diagnostics.
 
-- [ ] Add docs.
+- [x] Add docs.
 
   `docs/usage.md` must cover:
 
@@ -1182,7 +1182,7 @@ Add matching tests:
 
   `docs/ace-step.md` must cover embedded, HTTP, and RunPod modes.
 
-- [ ] Add CI.
+- [x] Add CI.
 
   `.github/workflows/ci.yml`:
 
@@ -1206,7 +1206,7 @@ Add matching tests:
         - run: pytest -v
   ```
 
-- [ ] Add README quickstart.
+- [x] Add README quickstart.
 
   Keep it short:
 
@@ -1216,7 +1216,7 @@ Add matching tests:
   - Run doctor.
   - Where outputs live.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -1225,7 +1225,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add README.md docs .github pyproject.toml src/lofi_focus_tui/cli.py src/lofi_focus_tui/diagnostics.py tests
