@@ -74,10 +74,11 @@ async def test_status_endpoint_reports_playing_after_task_completes():
 def test_build_playback_uses_null_player_without_sounddevice(monkeypatch):
     monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: False))
 
-    playback = _build_playback(PlaybackConfig(volume=0.25))
+    playback = _build_playback(PlaybackConfig(volume=0.25, fade_seconds=2.0))
 
     assert isinstance(playback.player, NullPlayer)
     assert playback.volume == 0.25
+    assert playback.fade_seconds == 2.0
 
 
 def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):

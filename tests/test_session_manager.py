@@ -7,7 +7,7 @@ import numpy as np
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.backend.session_manager import SessionManager
 from lofi_focus_tui.domain import BackendState, EnergyLevel, SessionRequest
-from lofi_focus_tui.generation.base import GenerationResult
+from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult
 from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.history import HistoryStore
@@ -189,6 +189,55 @@ class ChunkRecordingModel:
                 "backend": self.name,
                 "chunk": str(len(self.calls)),
             },
+        )
+
+
+class CancelAwareChunkModel:
+    name = "cancel-aware-chunk"
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.started_second = Event()
+        self.release_second = Event()
+
+    def generate(self, blueprint, duration_seconds, settings=None, cancel_event=None):
+        self.calls += 1
+        if self.calls == 2:
+            self.started_second.set()
+            self.release_second.wait(timeout=1.0)
+        return GenerationResult(
+            audio=np.full(duration_seconds * 10, 0.05, dtype=np.float32),
+            sample_rate=10,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
+class CancelAwareSequentialModel:
+    name = "cancel-aware-sequential"
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self.started = [Event(), Event()]
+        self.release = [Event(), Event()]
+        self.cancel_seen = []
+        self.call_count = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None, cancel_event=None):
+        with self._lock:
+            call_index = self.call_count
+            self.call_count += 1
+        self.started[call_index].set()
+        self.release[call_index].wait(timeout=1.0)
+        cancelled = cancel_event is not None and cancel_event.is_set()
+        self.cancel_seen.append(cancelled)
+        if cancelled:
+            raise GenerationCancelledError("generation cancelled")
+        return GenerationResult(
+            audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+            sample_rate=44100,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
         )
 
 
@@ -419,7 +468,7 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert [duration for _blueprint, duration, _settings in model.calls] == [60, 60, 60, 60, 60]
     assert "chunk 1 of 5" in " ".join(model.calls[0][0].texture_layers)
     assert "chunk 5 of 5" in " ".join(model.calls[-1][0].texture_layers)
-    assert playback.loaded.duration_seconds == 300
+    assert playback.loaded.duration_seconds == 296.0
     assert playback.loaded.audio.shape == (2960,)
 
 
@@ -455,3 +504,45 @@ def test_generation_error_updates_backend_status():
     assert final_status.state == BackendState.ERROR
     assert final_status.error == "generation exploded"
     assert final_status.message == "generation failed"
+
+
+def test_stop_session_cancels_chunked_generation_before_later_chunks_complete():
+    model = CancelAwareChunkModel()
+    manager = SessionManager(model=model, chunk_seconds=60)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 3}))
+    assert model.started_second.wait(timeout=1.0)
+    stopped_status = manager.stop_session()
+    model.release_second.set()
+    final_status = manager.wait_for_active_task()
+
+    assert stopped_status.state == BackendState.IDLE
+    assert final_status.state == BackendState.IDLE
+    assert model.calls == 2
+
+
+def test_starting_new_session_cancels_previous_cancellable_task():
+    model = CancelAwareSequentialModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started[0].wait(timeout=1.0)
+    second_status = manager.start_session(make_request())
+    model.release[0].set()
+    assert model.started[1].wait(timeout=1.0)
+    model.release[1].set()
+    final_status = manager.wait_for_active_task()
+
+    assert model.cancel_seen[0] is True
+    assert second_status.active_task_id == final_status.active_task_id
+    assert final_status.state == BackendState.PLAYING
+
+
+def test_session_status_reports_disabled_playback_mode():
+    manager = SessionManager(model=MockModelAdapter())
+
+    manager.start_session(make_request())
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.playback == "disabled"
+    assert final_status.message == "generated; playback disabled"

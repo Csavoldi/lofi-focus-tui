@@ -88,3 +88,4 @@ class BackendStatus(BaseModel):
     chunk_count: int = Field(default=0, ge=0)
     backend: str = "mock"
     device: str = "cpu"
+    playback: str = "unknown"

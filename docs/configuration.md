@@ -35,6 +35,7 @@ Backends:
 - `runpod`: RunPod-style remote adapter over a configured ACE-Step HTTP endpoint.
 
 `chunk_seconds` controls long-session chunk size. Chunks are checked for continuity and stitched with crossfades.
+`batch_size` is passed to ACE-Step backends.
 
 ## Playback
 
@@ -45,6 +46,7 @@ fade_seconds = 1.5
 ```
 
 Playback uses `sounddevice` when installed and falls back to a null player in unsupported environments.
+`fade_seconds` applies a fade to playback audio without changing the saved WAV.
 
 ## ACE-Step HTTP
 
@@ -56,6 +58,7 @@ timeout_seconds = 1800.0
 ```
 
 The HTTP adapter submits `/release_task`, polls `/query_result`, and downloads `/v1/audio?path=...`.
+`timeout_seconds` is the total remote task deadline as well as the HTTP client timeout.
 
 ## RunPod
 

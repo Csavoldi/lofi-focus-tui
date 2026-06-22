@@ -1,6 +1,7 @@
 import io
 import json
 import wave
+from threading import Event
 
 import httpx
 import numpy as np
@@ -8,6 +9,7 @@ import pytest
 
 from lofi_focus_tui.composition import create_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
+from lofi_focus_tui.generation.base import GenerationCancelledError
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter, TaskResult
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
@@ -74,6 +76,7 @@ def test_http_adapter_generates_audio_from_remote_task():
             payload = json.loads(request.content)
             assert payload["audio_duration"] == 1
             assert payload["infer_step"] == 12
+            assert payload["batch_size"] == 1
             assert payload["manual_seeds"] == "456"
             assert "instrumental focus music" in payload["prompt"]
             assert request.headers["authorization"] == "Bearer secret"
@@ -132,3 +135,51 @@ def test_http_adapter_raises_when_remote_task_fails():
 
     with pytest.raises(RuntimeError, match="out of memory"):
         adapter.generate(make_blueprint(), duration_seconds=1)
+
+
+def test_http_adapter_times_out_when_remote_task_never_finishes():
+    now = [100.0]
+
+    def clock() -> float:
+        now[0] += 2.0
+        return now[0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/release_task":
+            return httpx.Response(200, json={"task_id": "task-1"})
+        return httpx.Response(200, json={"task_id": "task-1", "status": "running"})
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        timeout_seconds=1.0,
+        poll_interval_seconds=0.0,
+        clock=clock,
+    )
+
+    with pytest.raises(TimeoutError, match="timed out"):
+        adapter.generate(make_blueprint(), duration_seconds=1)
+
+
+def test_http_adapter_stops_polling_when_generation_is_cancelled():
+    cancel_event = Event()
+    query_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal query_count
+        if request.url.path == "/release_task":
+            return httpx.Response(200, json={"task_id": "task-1"})
+        query_count += 1
+        cancel_event.set()
+        return httpx.Response(200, json={"task_id": "task-1", "status": "running"})
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+
+    with pytest.raises(GenerationCancelledError):
+        adapter.generate(make_blueprint(), duration_seconds=1, cancel_event=cancel_event)
+
+    assert query_count == 1

@@ -43,3 +43,14 @@ def test_expand_preset_uses_request_seed_when_provided():
     )
 
     assert plan.seed == 12345
+
+
+def test_expand_preset_uses_stable_default_seed():
+    request = SessionRequest(
+        preset="deep_work",
+        duration_minutes=30,
+        energy=EnergyLevel.STEADY,
+        style_tags=["lofi", "neo_soul"],
+    )
+
+    assert expand_preset(request).seed == 310262531

@@ -1,3 +1,4 @@
+import hashlib
 from uuid import uuid4
 
 from lofi_focus_tui.domain import EnergyLevel, SessionPhase, SessionPlan, SessionRequest
@@ -9,10 +10,8 @@ def expand_preset(request: SessionRequest) -> SessionPlan:
     avoid_traits.extend(["vocals", "sharp transients", "sudden drops"])
     seed = request.seed
     if seed is None:
-        seed = (
-            abs(hash((request.preset, request.duration_minutes, tuple(request.style_tags))))
-            % 2**31
-        )
+        payload = "|".join([request.preset, str(request.duration_minutes), *request.style_tags])
+        seed = int.from_bytes(hashlib.sha256(payload.encode("utf-8")).digest()[:4], "big") % 2**31
 
     return SessionPlan(
         session_id=str(uuid4()),

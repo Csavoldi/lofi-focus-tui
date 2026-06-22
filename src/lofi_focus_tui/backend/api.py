@@ -93,7 +93,7 @@ def _build_model(config: AppConfig | GenerationConfig) -> ModelAdapter:
 
 def _build_playback(config: PlaybackConfig) -> PlaybackManager:
     player = SoundDevicePlayer() if SoundDevicePlayer.available() else NullPlayer()
-    return PlaybackManager(player=player, volume=config.volume)
+    return PlaybackManager(player=player, volume=config.volume, fade_seconds=config.fade_seconds)
 
 
 def _build_manager(config: AppConfig) -> SessionManager:

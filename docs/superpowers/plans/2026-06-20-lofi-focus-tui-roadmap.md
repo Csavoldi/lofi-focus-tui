@@ -1237,6 +1237,7 @@ Add matching tests:
 - A new user can run mock mode from README alone.
 - `lofi-doctor` gives actionable output.
 - CI runs lint and tests.
+- Real ACE-Step user acceptance testing is documented and required before release.
 
 ---
 

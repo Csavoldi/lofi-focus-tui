@@ -20,7 +20,7 @@ dev = [
   "ruff>=0.6",
 ]
 ace-step = [
-  "acestep @ git+https://github.com/ace-step/ACE-Step.git",
+  "ace-step @ git+https://github.com/ace-step/ACE-Step.git",
 ]
 playback = [
   "sounddevice>=0.4.7",

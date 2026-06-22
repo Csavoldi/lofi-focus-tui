@@ -7,11 +7,15 @@ from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 
+class GenerationCancelledError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class GenerationResult:
     audio: np.ndarray
     sample_rate: int
-    duration_seconds: int
+    duration_seconds: float
     metadata: dict[str, str]
 
 

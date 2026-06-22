@@ -1,5 +1,6 @@
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from datetime import UTC, datetime
+from inspect import signature
 from math import ceil
 from threading import Lock
 from uuid import uuid4
@@ -12,7 +13,7 @@ from lofi_focus_tui.backend.tasks import GenerationTask
 from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.devices import choose_device
 from lofi_focus_tui.domain import BackendState, BackendStatus, SessionRequest
-from lofi_focus_tui.generation.base import GenerationResult, ModelAdapter
+from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult, ModelAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.history import HistoryStore, SessionRecord
 from lofi_focus_tui.presets import expand_preset
@@ -48,6 +49,7 @@ class SessionManager:
             state=BackendState.IDLE,
             message="ready",
             backend=model.name,
+            playback=self._playback_mode(),
             recent_sessions=self._recent_session_labels(),
         )
 
@@ -71,6 +73,7 @@ class SessionManager:
             active_task_id=task.task_id,
             backend=self.model.name,
             device=device.backend,
+            playback=self._playback_mode(),
             recent_sessions=self._recent_session_labels(),
             chunk_index=0,
             chunk_count=len(chunk_durations),
@@ -78,6 +81,7 @@ class SessionManager:
         with self._playback_lock:
             self.playback.stop()
         with self._lock:
+            self._cancel_active_task_locked()
             self._tasks[task.task_id] = task
             self._status = status
             self._active_future = self._executor.submit(
@@ -125,12 +129,14 @@ class SessionManager:
 
     def stop_session(self) -> BackendStatus:
         with self._lock:
+            self._cancel_active_task_locked()
             if self._active_future is not None:
                 self._active_future.cancel()
             self._status = BackendStatus(
                 state=BackendState.IDLE,
                 message="stopped",
                 backend=self.model.name,
+                playback=self._playback_mode(),
                 recent_sessions=self._recent_session_labels(),
             )
             status = self._status.model_copy()
@@ -181,6 +187,17 @@ class SessionManager:
                 device_backend,
             )
         except Exception as exc:
+            if isinstance(exc, GenerationCancelledError):
+                if self._is_active_task(task):
+                    self._update_task_status(
+                        task,
+                        state=BackendState.IDLE,
+                        message="stopped",
+                        progress=task.progress,
+                        device_backend=device_backend,
+                        chunk_count=len(chunk_durations),
+                    )
+                return
             task.error = str(exc)
             self._update_task_status(
                 task,
@@ -225,6 +242,7 @@ class SessionManager:
                 chunk_count=chunk_count,
                 backend=self.model.name,
                 device=device_backend,
+                playback=self._playback_mode(),
             )
 
     def _resolve_timing(self, request: SessionRequest, device) -> tuple[int, list[int]]:
@@ -258,7 +276,8 @@ class SessionManager:
         device_backend: str,
     ) -> GenerationResult:
         if len(chunk_durations) == 1:
-            return self.model.generate(
+            return self._generate_chunk(
+                task,
                 blueprint,
                 duration_seconds=chunk_durations[0],
                 settings=settings,
@@ -267,14 +286,18 @@ class SessionManager:
         chunk_results = []
         chunk_count = len(chunk_durations)
         for chunk_index, chunk_duration in enumerate(chunk_durations):
+            self._raise_if_cancelled(task)
             chunk_blueprint = create_chunk_blueprint(plan, chunk_index, chunk_count)
-            result = self.model.generate(
+            result = self._generate_chunk(
+                task,
                 chunk_blueprint,
                 duration_seconds=chunk_duration,
                 settings=settings,
             )
+            self._raise_if_cancelled(task)
             if chunk_results:
                 result = self._retry_chunk_if_needed(
+                    task=task,
                     previous=chunk_results[-1],
                     result=result,
                     chunk_blueprint=chunk_blueprint,
@@ -294,8 +317,32 @@ class SessionManager:
             )
         return self._stitch_chunk_results(plan.session_id, chunk_results)
 
+    def _generate_chunk(
+        self,
+        task: GenerationTask,
+        blueprint,
+        duration_seconds: int,
+        settings: GenerationSettings | None,
+    ) -> GenerationResult:
+        generate = self.model.generate
+        parameters = signature(generate).parameters
+        if "cancel_event" in parameters:
+            return generate(
+                blueprint,
+                duration_seconds=duration_seconds,
+                settings=settings,
+                cancel_event=task.cancel_event,
+            )
+        return generate(blueprint, duration_seconds=duration_seconds, settings=settings)
+
+    @staticmethod
+    def _raise_if_cancelled(task: GenerationTask) -> None:
+        if task.cancel_event.is_set():
+            raise GenerationCancelledError("generation cancelled")
+
     def _retry_chunk_if_needed(
         self,
+        task: GenerationTask,
         previous: GenerationResult,
         result: GenerationResult,
         chunk_blueprint,
@@ -312,7 +359,8 @@ class SessionManager:
         retry_settings = settings
         if settings is not None and settings.seed >= 0:
             retry_settings = settings.model_copy(update={"seed": retry_seed})
-        retry_result = self.model.generate(
+        retry_result = self._generate_chunk(
+            task,
             retry_blueprint,
             duration_seconds=chunk_duration,
             settings=retry_settings,
@@ -340,12 +388,16 @@ class SessionManager:
             {
                 "session_id": session_id,
                 "chunk_count": str(len(chunk_results)),
+                "requested_duration_seconds": str(
+                    sum(result.duration_seconds for result in chunk_results)
+                ),
+                "actual_duration_seconds": f"{len(audio) / sample_rate:.6f}",
             }
         )
         return GenerationResult(
             audio=audio,
             sample_rate=sample_rate,
-            duration_seconds=sum(result.duration_seconds for result in chunk_results),
+            duration_seconds=len(audio) / sample_rate,
             metadata=metadata,
         )
 
@@ -385,9 +437,13 @@ class SessionManager:
                 if record is not None and self.history_store is not None:
                     self.history_store.append(record)
                 task.output_path = output_path
-                message = "playing"
-                if getattr(self.playback, "last_error", None):
-                    message = "playing with fallback playback"
+                playback_mode = self._playback_mode()
+                if playback_mode == "disabled":
+                    message = "generated; playback disabled"
+                elif getattr(self.playback, "last_error", None):
+                    message = "generated; playback fallback"
+                else:
+                    message = "playing"
                 task.update(BackendState.PLAYING, message, 1.0)
                 self._status = BackendStatus(
                     state=task.state,
@@ -402,6 +458,7 @@ class SessionManager:
                     chunk_count=chunk_count,
                     backend=self.model.name,
                     device=device_backend,
+                    playback=playback_mode,
                 )
 
     def _prepare_output_record(
@@ -424,6 +481,7 @@ class SessionManager:
             "settings": settings.model_dump(mode="json") if settings is not None else None,
             "device": device_backend,
             "duration_seconds": duration_seconds,
+            "actual_duration_seconds": result.duration_seconds,
             "generation": result.metadata,
         }
         metadata_path = self.output_manager.save_metadata(metadata, directory)
@@ -451,6 +509,18 @@ class SessionManager:
             favorite = " *" if record.favorite else ""
             labels.append(f"{record.session_id[:8]} {record.preset}{favorite}")
         return labels
+
+    def _cancel_active_task_locked(self) -> None:
+        if self._active_future is not None:
+            self._active_future.cancel()
+        if self._status.active_task_id is None:
+            return
+        active_task = self._tasks.get(self._status.active_task_id)
+        if active_task is not None:
+            active_task.cancel_event.set()
+
+    def _playback_mode(self) -> str:
+        return str(getattr(self.playback, "mode", "custom"))
 
     @staticmethod
     def _output_path(metadata: dict[str, str]) -> str | None:

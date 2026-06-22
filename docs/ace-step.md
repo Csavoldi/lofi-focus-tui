@@ -35,6 +35,7 @@ timeout_seconds = 1800.0
 ```
 
 The adapter submits `/release_task`, polls `/query_result`, and downloads WAV audio from `/v1/audio`.
+Polling stops when the configured timeout is reached or when the session is cancelled.
 
 ## RunPod Mode
 
@@ -72,3 +73,9 @@ lofi-doctor
 ```
 
 Use warnings about missing optional packages or unavailable backend ports to decide which extra to install or which service to start.
+
+## Acceptance
+
+Real ACE-Step generation is required before release. Follow
+[`docs/user-acceptance-testing.md`](user-acceptance-testing.md) for the short-generation,
+chunked-generation, and error UX gates.

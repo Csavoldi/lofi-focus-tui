@@ -27,12 +27,14 @@ lofi
 ```
 
 Press `s` to start a session. Use `space` to pause or resume, `x` to stop, and `r` to refresh.
+The duration selector includes a 5-minute option for real-generation smoke tests.
 
 ## Session Controls
 
 The TUI starts with a deep-work session. Cycle presets, duration, energy, and style fields from the keyboard, then press `s`.
 
-The status panel shows backend state, device, generation progress, chunk progress for long sessions, and recent saved sessions.
+The status panel shows backend state, device, playback mode, generation progress, chunk progress for long sessions, and recent saved sessions.
+If no audio device is available, generated audio is saved and status reports playback as disabled.
 
 ## Outputs
 
@@ -49,6 +51,7 @@ History is stored as JSON lines at:
 ```
 
 Each saved session includes `audio.wav` and `metadata.json` with request, plan, blueprint, settings, device, seed, and generation metadata.
+For chunked sessions, metadata includes both requested and actual stitched duration because crossfades shorten the final WAV slightly.
 
 ## Diagnostics
 

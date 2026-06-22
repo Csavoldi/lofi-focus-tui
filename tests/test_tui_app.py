@@ -2,6 +2,7 @@ import pytest
 
 from lofi_focus_tui.domain import BackendStatus
 from lofi_focus_tui.tui.app import LofiFocusApp
+from lofi_focus_tui.tui.widgets import DURATIONS
 
 
 def status_text(app: LofiFocusApp) -> str:
@@ -67,6 +68,10 @@ async def test_tui_renders_session_labels():
     assert "focus:" in str(text)
     assert "backend: mock" in str(text)
     assert "preset: deep_work" in str(text)
+
+
+def test_tui_duration_options_include_short_real_generation_smoke_test():
+    assert 5 in DURATIONS
 
 
 @pytest.mark.asyncio

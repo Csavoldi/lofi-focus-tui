@@ -59,6 +59,24 @@ def test_load_stores_current_and_calls_player_play():
     assert player.calls[0][2:] == (result.sample_rate, 0.4)
 
 
+def test_load_applies_configured_playback_fade_without_mutating_result():
+    result = GenerationResult(
+        audio=np.ones(10, dtype=np.float32),
+        sample_rate=10,
+        duration_seconds=1,
+        metadata={},
+    )
+    player = FakePlayer()
+    manager = PlaybackManager(player=player, fade_seconds=0.2)
+
+    manager.load(result)
+
+    played_audio = player.calls[0][1]
+    assert played_audio[0] == 0.0
+    assert played_audio[-1] == 0.0
+    np.testing.assert_array_equal(result.audio, np.ones(10, dtype=np.float32))
+
+
 def test_pause_calls_player_pause_and_sets_paused():
     player = FakePlayer()
     manager = PlaybackManager(player=player)

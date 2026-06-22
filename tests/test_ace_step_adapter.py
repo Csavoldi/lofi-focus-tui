@@ -1,7 +1,11 @@
 import math
+import struct
 import wave
 from pathlib import Path
 
+import numpy as np
+
+from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.composition import create_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
@@ -90,6 +94,22 @@ def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
     assert call["cfg_type"] == "cfg"
     assert call["omega_scale"] == 2.5
     assert call["manual_seeds"] == "456"
+    assert call["batch_size"] == 1
     assert call["save_path"].endswith(".wav")
     assert result.metadata["output_path"].endswith(".wav")
     assert result.metadata["path"].endswith(".wav")
+
+
+def test_read_wav_file_decodes_32_bit_pcm(tmp_path):
+    path = tmp_path / "pcm32.wav"
+    values = [0, 2**30, -(2**30)]
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(4)
+        wav.setframerate(44100)
+        wav.writeframes(b"".join(struct.pack("<i", value) for value in values))
+
+    audio, sample_rate = read_wav_file(path)
+
+    assert sample_rate == 44100
+    np.testing.assert_allclose(audio, np.array([0.0, 0.5, -0.5], dtype=np.float32))

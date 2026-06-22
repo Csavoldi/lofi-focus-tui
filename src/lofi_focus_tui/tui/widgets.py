@@ -1,7 +1,7 @@
 from lofi_focus_tui.domain import BackendStatus, EnergyLevel
 
 PRESETS = ["deep_work", "reading", "coding", "wind_down"]
-DURATIONS = [25, 30, 45, 60, 90]
+DURATIONS = [5, 25, 30, 45, 60, 90]
 ENERGIES = [EnergyLevel.LOW, EnergyLevel.STEADY, EnergyLevel.HIGH]
 STYLE_TAG_SETS = ["lofi, neo_soul", "ambient, tape", "rainy, mellow", "jazz, vinyl"]
 
@@ -23,6 +23,7 @@ def render_status(status: BackendStatus) -> str:
     return (
         f"state: {_enum_value(status.state)}\n"
         f"backend: {status.backend}  device: {status.device}\n"
+        f"playback: {status.playback}\n"
         f"progress: {progress}%\n"
         f"message: {status.message}"
         f"{chunk_line}"

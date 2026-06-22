@@ -58,6 +58,7 @@ More detail:
 - [Usage](docs/usage.md)
 - [Configuration](docs/configuration.md)
 - [ACE-Step modes](docs/ace-step.md)
+- [User acceptance testing](docs/user-acceptance-testing.md)
 
 ## ACE-Step Smoke Test
 
@@ -74,4 +75,4 @@ Expected output:
 True
 ```
 
-Use the fake-pipeline tests for normal development. Run real ACE-Step generation only on a prepared GPU machine.
+Use the fake-pipeline tests for normal development. Run real ACE-Step generation only on a prepared GPU machine. Real ACE-Step generation must pass before release.

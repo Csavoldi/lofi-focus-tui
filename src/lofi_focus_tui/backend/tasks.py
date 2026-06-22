@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from threading import Event
 from time import monotonic
 
 from lofi_focus_tui.domain import BackendState
@@ -13,6 +14,7 @@ class GenerationTask:
     message: str = "planning"
     error: str | None = None
     output_path: str | None = None
+    cancel_event: Event = field(default_factory=Event)
     started_at: float = field(default_factory=monotonic)
     updated_at: float = field(default_factory=monotonic)
 

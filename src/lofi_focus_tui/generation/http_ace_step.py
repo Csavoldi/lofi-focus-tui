@@ -1,16 +1,16 @@
-import io
 import json
 import time
-import wave
-from typing import Any
+from threading import Event
+from typing import Any, Callable
 
 import httpx
 import numpy as np
 from pydantic import BaseModel
 
+from lofi_focus_tui.audio.wav import read_wav_bytes
 from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.ace_step import _blueprint_to_prompt
-from lofi_focus_tui.generation.base import GenerationResult
+from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 SUCCEEDED_STATUSES = {"succeeded", "success", "completed", "done"}
@@ -85,10 +85,15 @@ class AceStepHttpAdapter:
         poll_interval_seconds: float = 1.0,
         transport: httpx.BaseTransport | None = None,
         client: httpx.Client | None = None,
+        clock: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self.timeout_seconds = timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
+        self.clock = clock or time.monotonic
+        self.sleep = sleep or time.sleep
         self.client = client or httpx.Client(
             base_url=self.base_url,
             timeout=timeout_seconds,
@@ -121,6 +126,7 @@ class AceStepHttpAdapter:
             "omega_scale": settings.omega_scale,
             "manual_seeds": str(seed),
             "output_format": settings.output_format,
+            "batch_size": settings.batch_size,
         }
         response = self.client.post("/release_task", json=payload, headers=self._headers())
         response.raise_for_status()
@@ -142,16 +148,21 @@ class AceStepHttpAdapter:
             headers=self._headers(),
         )
         response.raise_for_status()
-        return _read_wav_bytes(response.content)
+        return read_wav_bytes(response.content)
 
     def generate(
         self,
         blueprint: CompositionBlueprint,
         duration_seconds: int,
         settings: GenerationSettings | None = None,
+        cancel_event: Event | None = None,
     ) -> GenerationResult:
         submission = self.submit_task(blueprint, duration_seconds, settings)
+        started_at = self.clock()
         while True:
+            self._raise_if_cancelled(cancel_event)
+            if self.clock() - started_at > self.timeout_seconds:
+                raise TimeoutError(f"ACE-Step HTTP task timed out after {self.timeout_seconds:g}s")
             result = self.query_result(submission.task_id)
             if result.status in SUCCEEDED_STATUSES:
                 if result.audio is None:
@@ -171,12 +182,17 @@ class AceStepHttpAdapter:
             if result.status in FAILED_STATUSES:
                 raise RuntimeError(result.error or f"ACE-Step HTTP task {result.status}")
             if self.poll_interval_seconds > 0:
-                time.sleep(self.poll_interval_seconds)
+                self.sleep(self.poll_interval_seconds)
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
             return {}
         return {"Authorization": f"Bearer {self.api_key}"}
+
+    @staticmethod
+    def _raise_if_cancelled(cancel_event: Event | None) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise GenerationCancelledError("generation cancelled")
 
 
 def _unwrap_data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -193,14 +209,3 @@ def _decode_jsonish(payload: Any) -> Any:
         except json.JSONDecodeError:
             return payload
     return payload
-
-
-def _read_wav_bytes(content: bytes) -> tuple[np.ndarray, int]:
-    with wave.open(io.BytesIO(content), "rb") as wav:
-        channels = wav.getnchannels()
-        sample_rate = wav.getframerate()
-        frames = wav.readframes(wav.getnframes())
-        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-    if channels > 1:
-        audio = audio.reshape(-1, channels).mean(axis=1)
-    return audio, sample_rate
