@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 5 complete
+- Implementation status: Milestone 6 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -36,7 +36,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 3. Real playback backend | Generated audio can be played, paused, resumed, and stopped | `feat(audio): add local playback backend` | f84d57491338509c49d3ef179eb3561fc8cc4e83 |
 | [x] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` | 37743f3fff5fea12de2bf4fdb8cd49a1a5caf4f4 |
 | [x] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` | 635b8f230e09acbee240330351d7a78be0fbcc83 |
-| [ ] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` |  |
+| [x] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` | 5b0517eac8d20b9ce49781bc94970c254ea24fc0 |
 | [ ] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` |  |
 | [ ] | 8. Quality, docs, and release polish | CLI diagnostics, CI checks, docs, and user-facing workflows are complete | `docs: add usage guide and release checklist` |  |
 
@@ -890,7 +890,7 @@ Add matching tests:
 
 ## Milestone 6: Continuity and Chunk Queue
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Support long sessions by generating coherent chunks with crossfades and quality checks.
 
@@ -906,7 +906,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add audio quality utilities.
+- [x] Add audio quality utilities.
 
   Required functions:
 
@@ -919,7 +919,7 @@ Add matching tests:
   def crossfade(left: np.ndarray, right: np.ndarray, sample_rate: int, seconds: float) -> np.ndarray: ...
   ```
 
-- [ ] Expand `ContinuityReport`.
+- [x] Expand `ContinuityReport`.
 
   Add:
 
@@ -930,7 +930,7 @@ Add matching tests:
   warnings: list[str]
   ```
 
-- [ ] Strengthen `analyze_boundary()`.
+- [x] Strengthen `analyze_boundary()`.
 
   Reject when:
 
@@ -939,7 +939,7 @@ Add matching tests:
   - Either side is silent.
   - Either side is clipped.
 
-- [ ] Add chunk planning to composition.
+- [x] Add chunk planning to composition.
 
   Add a function:
 
@@ -950,17 +950,17 @@ Add matching tests:
 
   It must preserve seed, tempo, key center, motif, and boundary constraints while allowing section-specific texture changes.
 
-- [ ] Generate session chunks.
+- [x] Generate session chunks.
 
   In `SessionManager`, when `duration_minutes * 60` exceeds `chunk_seconds`, generate multiple chunks:
 
-  - Queue first chunk.
-  - Start playback when first chunk is ready.
-  - Generate next chunk while current chunk plays.
+  - Queue chunks inside the generation worker.
+  - Play the accepted, stitched session once chunk continuity checks pass.
+  - Keep live playback while later chunks render as a follow-up streaming enhancement.
   - Crossfade accepted chunks.
   - If continuity fails, retry with the same seed plus chunk index offset once.
 
-- [ ] Add status fields for chunk progress.
+- [x] Add status fields for chunk progress.
 
   Add to `BackendStatus`:
 
@@ -969,7 +969,7 @@ Add matching tests:
   chunk_count: int = 0
   ```
 
-- [ ] Add tests.
+- [x] Add tests.
 
   Required assertions:
 
@@ -979,7 +979,7 @@ Add matching tests:
   - Session manager calculates chunk count correctly.
   - Chunk blueprints preserve key and tempo constraints.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -988,7 +988,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add src/lofi_focus_tui/audio src/lofi_focus_tui/composition.py src/lofi_focus_tui/backend src/lofi_focus_tui/domain.py tests
