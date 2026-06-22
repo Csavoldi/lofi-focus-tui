@@ -60,19 +60,32 @@ More detail:
 - [ACE-Step modes](docs/ace-step.md)
 - [User acceptance testing](docs/user-acceptance-testing.md)
 
-## ACE-Step Smoke Test
+## ACE-Step-1.5 HTTP Smoke Test
 
-ACE-Step is optional during normal development. Install it only on a machine prepared for model inference:
+ACE-Step is optional during normal development. For release UAT, run the ACE-Step-1.5
+REST API locally and point this app at it over HTTP.
 
 ```bash
-python -m pip install -e ".[ace-step]"
-python -c "import importlib.util; print(importlib.util.find_spec('acestep') is not None)"
+git clone https://github.com/ace-step/ACE-Step-1.5.git
+cd ACE-Step-1.5
+uv sync
+uv run acestep-api
 ```
 
-Expected output:
+The API should listen on `http://127.0.0.1:8001`.
 
-```text
-True
+In this repository, run the live UAT gate from a second terminal:
+
+```bash
+LOFI_UAT_ACE_STEP_BASE_URL=http://127.0.0.1:8001 pytest tests/test_live_ace_step_http.py -v
 ```
 
-Use the fake-pipeline tests for normal development. Run real ACE-Step generation only on a prepared GPU machine. Real ACE-Step generation must pass before release.
+PowerShell:
+
+```powershell
+$env:LOFI_UAT_ACE_STEP_BASE_URL = "http://127.0.0.1:8001"
+pytest tests/test_live_ace_step_http.py -v
+```
+
+Use the fake-pipeline tests for normal development. Run real ACE-Step generation only on a
+prepared model-inference machine. Real ACE-Step-1.5 HTTP generation must pass before release.

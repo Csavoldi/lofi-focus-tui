@@ -67,6 +67,40 @@ def test_task_result_parses_double_encoded_audio_result():
     assert result.audio.path == "rendered.wav"
 
 
+def test_task_result_parses_ace_step_15_batch_audio_result():
+    result = TaskResult.from_payload(
+        {
+            "data": [
+                {
+                    "task_id": "task-1",
+                    "status": 1,
+                    "result": json.dumps(
+                        [
+                            {
+                                "file": "/v1/audio?path=%2Ftmp%2Fapi_audio%2Frendered.wav",
+                                "lm_model": "acestep-5Hz-lm-0.6B",
+                                "dit_model": "acestep-v15-turbo",
+                            }
+                        ]
+                    ),
+                }
+            ]
+        }
+    )
+
+    assert result.task_id == "task-1"
+    assert result.status == "succeeded"
+    assert result.audio.path == "/tmp/api_audio/rendered.wav"
+
+
+def test_task_result_parses_ace_step_15_running_status():
+    result = TaskResult.from_payload({"data": [{"task_id": "task-1", "status": 0}]})
+
+    assert result.task_id == "task-1"
+    assert result.status == "running"
+    assert result.audio is None
+
+
 def test_http_adapter_generates_audio_from_remote_task():
     requests = []
 
@@ -74,20 +108,36 @@ def test_http_adapter_generates_audio_from_remote_task():
         requests.append(request)
         if request.method == "POST" and request.url.path == "/release_task":
             payload = json.loads(request.content)
-            assert payload["audio_duration"] == 1
-            assert payload["infer_step"] == 12
+            assert payload["audio_duration"] == 10
+            assert payload["inference_steps"] == 12
+            assert payload["audio_format"] == "wav"
             assert payload["batch_size"] == 1
-            assert payload["manual_seeds"] == "456"
+            assert payload["use_random_seed"] is False
+            assert payload["seed"] == 456
             assert "instrumental focus music" in payload["prompt"]
             assert request.headers["authorization"] == "Bearer secret"
             return httpx.Response(200, json={"task_id": "task-1"})
         if request.method == "POST" and request.url.path == "/query_result":
+            payload = json.loads(request.content)
+            assert payload == {"task_id_list": ["task-1"]}
             return httpx.Response(
                 200,
                 json={
-                    "task_id": "task-1",
-                    "status": "succeeded",
-                    "result": json.dumps({"path": "rendered.wav"}),
+                    "data": [
+                        {
+                            "task_id": "task-1",
+                            "status": 1,
+                            "result": json.dumps(
+                                [
+                                    {
+                                        "file": "/v1/audio?path=rendered.wav",
+                                        "lm_model": "acestep-5Hz-lm-0.6B",
+                                        "dit_model": "acestep-v15-turbo",
+                                    }
+                                ]
+                            ),
+                        }
+                    ]
                 },
             )
         if request.method == "GET" and request.url.path == "/v1/audio":
@@ -103,10 +153,10 @@ def test_http_adapter_generates_audio_from_remote_task():
     )
     settings = GenerationSettings(inference_steps=12, seed=456)
 
-    result = adapter.generate(make_blueprint(), duration_seconds=1, settings=settings)
+    result = adapter.generate(make_blueprint(), duration_seconds=10, settings=settings)
 
     assert result.sample_rate == 22050
-    assert result.duration_seconds == 1
+    assert result.duration_seconds == 10
     assert result.audio.shape == (3,)
     assert result.metadata["backend"] == "ace-step-http"
     assert result.metadata["task_id"] == "task-1"
@@ -124,7 +174,7 @@ def test_http_adapter_raises_when_remote_task_fails():
             return httpx.Response(200, json={"task_id": "task-1"})
         return httpx.Response(
             200,
-            json={"task_id": "task-1", "status": "failed", "error": "out of memory"},
+            json={"data": [{"task_id": "task-1", "status": 2, "error": "out of memory"}]},
         )
 
     adapter = AceStepHttpAdapter(

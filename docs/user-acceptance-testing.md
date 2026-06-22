@@ -55,10 +55,32 @@ endpoint, commands run, generated output paths, and pass/fail notes.
    - Saved output contains `audio.wav` and `metadata.json`.
    - If no playback device is available, status says playback is disabled instead of implying audible playback.
 
-## Gate 3: Real ACE-Step Short Generation
+## Gate 3: Real ACE-Step-1.5 HTTP Short Generation
 
-Use `ace-step-http`, `runpod`, or embedded `ace-step`. HTTP mode is preferred for UAT because
+Use ACE-Step-1.5 through the local REST API. HTTP mode is the required release gate because
 it keeps the TUI/backend contract independent from model-process lifecycle issues.
+
+Start ACE-Step-1.5 in a separate checkout:
+
+```bash
+git clone https://github.com/ace-step/ACE-Step-1.5.git
+cd ACE-Step-1.5
+uv sync
+uv run acestep-api
+```
+
+Windows launch-script alternative:
+
+```powershell
+.\start_api_server.bat
+```
+
+Confirm the service:
+
+```bash
+curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8001/v1/models
+```
 
 Example `config.toml`:
 
@@ -66,7 +88,7 @@ Example `config.toml`:
 [generation]
 backend = "ace-step-http"
 chunk_seconds = 300
-inference_steps = 27
+inference_steps = 8
 batch_size = 1
 
 [ace_step_http]
@@ -74,13 +96,26 @@ base_url = "http://127.0.0.1:8001"
 timeout_seconds = 1800.0
 ```
 
-1. Start the ACE-Step service or remote endpoint.
+1. Run the direct live gate:
+
+   ```bash
+   LOFI_UAT_ACE_STEP_BASE_URL=http://127.0.0.1:8001 pytest tests/test_live_ace_step_http.py -v
+   ```
+
+   PowerShell:
+
+   ```powershell
+   $env:LOFI_UAT_ACE_STEP_BASE_URL = "http://127.0.0.1:8001"
+   pytest tests/test_live_ace_step_http.py -v
+   ```
+
 2. Start `lofi-backend`.
 3. Start `lofi`.
 4. Cycle duration to `5 minutes`.
 5. Start a session.
 
 Pass criteria:
+- `tests/test_live_ace_step_http.py` passes and writes evidence under `.uat/ace-step-http/`.
 - Generation completes before `timeout_seconds`.
 - The backend does not hang indefinitely if the remote task stalls.
 - `audio.wav` is valid, non-silent, and not clipped.

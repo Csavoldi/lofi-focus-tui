@@ -48,7 +48,7 @@ fade_seconds = 1.5
 Playback uses `sounddevice` when installed and falls back to a null player in unsupported environments.
 `fade_seconds` applies a fade to playback audio without changing the saved WAV.
 
-## ACE-Step HTTP
+## ACE-Step-1.5 HTTP
 
 ```toml
 [ace_step_http]
@@ -57,7 +57,9 @@ api_key = ""
 timeout_seconds = 1800.0
 ```
 
-The HTTP adapter submits `/release_task`, polls `/query_result`, and downloads `/v1/audio?path=...`.
+The HTTP adapter targets the ACE-Step-1.5 REST API shape: submit `/release_task`,
+poll `/query_result` with `task_id_list`, and download the returned `/v1/audio?path=...`
+WAV URL.
 `timeout_seconds` is the total remote task deadline as well as the HTTP client timeout.
 
 ## RunPod

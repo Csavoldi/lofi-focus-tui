@@ -1,5 +1,6 @@
 import json
 import time
+import urllib.parse
 from threading import Event
 from typing import Any, Callable
 
@@ -13,8 +14,13 @@ from lofi_focus_tui.generation.ace_step import _blueprint_to_prompt
 from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult
 from lofi_focus_tui.generation.settings import GenerationSettings
 
-SUCCEEDED_STATUSES = {"succeeded", "success", "completed", "done"}
-FAILED_STATUSES = {"failed", "error", "cancelled", "canceled"}
+SUCCEEDED_STATUSES = {"1", "succeeded", "success", "completed", "done"}
+FAILED_STATUSES = {"2", "failed", "error", "cancelled", "canceled"}
+STATUS_ALIASES = {
+    "0": "running",
+    "1": "succeeded",
+    "2": "failed",
+}
 
 
 class TaskSubmission(BaseModel):
@@ -35,19 +41,24 @@ class AudioResult(BaseModel):
     @classmethod
     def from_payload(cls, payload: Any) -> "AudioResult":
         data = _decode_jsonish(payload)
+        if isinstance(data, list):
+            if not data:
+                raise RuntimeError("ACE-Step HTTP audio result list was empty")
+            data = _first_successful_result(data)
         if isinstance(data, str):
-            return cls(path=data)
+            return cls(path=_audio_download_path(data))
         if not isinstance(data, dict):
             raise RuntimeError("ACE-Step HTTP audio result must be an object or path")
         path = (
-            data.get("path")
+            data.get("file")
+            or data.get("path")
             or data.get("audio_path")
             or data.get("output_path")
             or data.get("url")
         )
         if not path:
             raise RuntimeError("ACE-Step HTTP result did not include an audio path")
-        return cls(path=str(path))
+        return cls(path=_audio_download_path(str(path)))
 
 
 class TaskResult(BaseModel):
@@ -58,8 +69,8 @@ class TaskResult(BaseModel):
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TaskResult":
-        data = _unwrap_data(payload)
-        status = str(data.get("status") or data.get("state") or "").lower()
+        data = _unwrap_task_result_data(payload)
+        status = _normalize_status(_status_value(data))
         if not status:
             raise RuntimeError("ACE-Step HTTP result did not include a status")
         result = data.get("result") or data.get("audio") or data.get("output")
@@ -119,15 +130,15 @@ class AceStepHttpAdapter:
             "audio_duration": duration_seconds,
             "prompt": _blueprint_to_prompt(blueprint),
             "lyrics": "",
-            "infer_step": settings.inference_steps,
+            "thinking": False,
+            "inference_steps": settings.inference_steps,
             "guidance_scale": settings.guidance_scale,
-            "scheduler_type": settings.scheduler_type,
-            "cfg_type": settings.cfg_type,
-            "omega_scale": settings.omega_scale,
-            "manual_seeds": str(seed),
-            "output_format": settings.output_format,
+            "audio_format": settings.output_format,
             "batch_size": settings.batch_size,
+            "use_random_seed": seed < 0,
         }
+        if seed >= 0:
+            payload["seed"] = seed
         response = self.client.post("/release_task", json=payload, headers=self._headers())
         response.raise_for_status()
         return TaskSubmission.from_payload(response.json())
@@ -135,7 +146,7 @@ class AceStepHttpAdapter:
     def query_result(self, task_id: str) -> TaskResult:
         response = self.client.post(
             "/query_result",
-            json={"task_id": task_id},
+            json={"task_id_list": [task_id]},
             headers=self._headers(),
         )
         response.raise_for_status()
@@ -200,6 +211,48 @@ def _unwrap_data(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise RuntimeError("ACE-Step HTTP response data must be an object")
     return data
+
+
+def _unwrap_task_result_data(payload: dict[str, Any]) -> dict[str, Any]:
+    data = payload.get("data", payload)
+    if isinstance(data, list):
+        if not data:
+            raise RuntimeError("ACE-Step HTTP response data list was empty")
+        data = data[0]
+    if not isinstance(data, dict):
+        raise RuntimeError("ACE-Step HTTP response data must be an object")
+    return data
+
+
+def _first_successful_result(results: list[Any]) -> Any:
+    for result in results:
+        if isinstance(result, dict):
+            status = _normalize_status(result.get("status", "succeeded"))
+            if status in SUCCEEDED_STATUSES:
+                return result
+    return results[0]
+
+
+def _normalize_status(value: Any) -> str:
+    if value is None:
+        return ""
+    status = str(value).lower()
+    return STATUS_ALIASES.get(status, status)
+
+
+def _status_value(data: dict[str, Any]) -> Any:
+    if "status" in data:
+        return data["status"]
+    return data.get("state")
+
+
+def _audio_download_path(path_or_url: str) -> str:
+    parsed = urllib.parse.urlparse(path_or_url)
+    if parsed.path == "/v1/audio":
+        query = urllib.parse.parse_qs(parsed.query)
+        if path := query.get("path", [None])[0]:
+            return path
+    return path_or_url
 
 
 def _decode_jsonish(payload: Any) -> Any:
