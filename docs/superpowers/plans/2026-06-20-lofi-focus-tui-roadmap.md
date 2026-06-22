@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 4 complete
+- Implementation status: Milestone 5 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -35,7 +35,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 2. Async backend task state | Session start returns quickly and `/status` reports generation progress | `feat(backend): add async session task state` | 376cd677131f21aeb48bd1bff064112c2f0e5130 |
 | [x] | 3. Real playback backend | Generated audio can be played, paused, resumed, and stopped | `feat(audio): add local playback backend` | f84d57491338509c49d3ef179eb3561fc8cc4e83 |
 | [x] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` | 37743f3fff5fea12de2bf4fdb8cd49a1a5caf4f4 |
-| [ ] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` |  |
+| [x] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` | 635b8f230e09acbee240330351d7a78be0fbcc83 |
 | [ ] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` |  |
 | [ ] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` |  |
 | [ ] | 8. Quality, docs, and release polish | CLI diagnostics, CI checks, docs, and user-facing workflows are complete | `docs: add usage guide and release checklist` |  |
@@ -775,7 +775,7 @@ Add matching tests:
 
 ## Milestone 5: Output Cache and History
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Persist generated audio and metadata so sessions can be replayed and varied.
 
@@ -791,7 +791,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add `OutputManager`.
+- [x] Add `OutputManager`.
 
   Required methods:
 
@@ -803,7 +803,7 @@ Add matching tests:
       def save_metadata(self, metadata: dict, directory: Path) -> Path: ...
   ```
 
-- [ ] Use safe directory names.
+- [x] Use safe directory names.
 
   Slug behavior:
 
@@ -813,7 +813,7 @@ Add matching tests:
   - Limit slug to 40 characters.
   - Use `session` if slug is empty.
 
-- [ ] Add `SessionRecord` in `history.py`.
+- [x] Add `SessionRecord` in `history.py`.
 
   Fields:
 
@@ -829,7 +829,7 @@ Add matching tests:
   tags: list[str]
   ```
 
-- [ ] Add `HistoryStore`.
+- [x] Add `HistoryStore`.
 
   Use JSON lines at `cache/history.jsonl`.
 
@@ -840,7 +840,7 @@ Add matching tests:
   - `mark_favorite(session_id: str, favorite: bool = True) -> bool`
   - `find(session_id: str) -> SessionRecord | None`
 
-- [ ] Save output when generation completes.
+- [x] Save output when generation completes.
 
   In `SessionManager`, after successful generation:
 
@@ -850,11 +850,11 @@ Add matching tests:
   - Append history record.
   - Put `output_path` in `BackendStatus`.
 
-- [ ] Add TUI history panel.
+- [x] Add TUI history panel.
 
   First pass can show the last 5 records with session ID prefix, preset, and favorite marker.
 
-- [ ] Add tests.
+- [x] Add tests.
 
   Required assertions:
 
@@ -864,7 +864,7 @@ Add matching tests:
   - History list returns newest records first.
   - Favorite flag persists.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -873,7 +873,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add src/lofi_focus_tui/audio src/lofi_focus_tui/history.py src/lofi_focus_tui/backend src/lofi_focus_tui/tui tests
