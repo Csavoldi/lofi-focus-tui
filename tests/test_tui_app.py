@@ -167,6 +167,28 @@ async def test_tui_renders_recent_history():
 
 
 @pytest.mark.asyncio
+async def test_tui_renders_chunk_progress():
+    backend_client = FakeBackendClient()
+    backend_client.statuses = [
+        BackendStatus(
+            state="generating",
+            message="generated chunk 2/5",
+            backend="mock",
+            device="cpu",
+            progress=0.6,
+            chunk_index=2,
+            chunk_count=5,
+        )
+    ]
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        text = status_text(pilot.app)
+
+    assert "chunks: 2/5" in str(text)
+
+
+@pytest.mark.asyncio
 async def test_tui_registers_periodic_status_polling():
     backend_client = FakeBackendClient()
     app = LofiFocusApp(backend_client=backend_client)

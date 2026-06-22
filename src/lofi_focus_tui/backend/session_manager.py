@@ -1,15 +1,18 @@
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from datetime import UTC, datetime
+from math import ceil
 from threading import Lock
 from uuid import uuid4
 
+from lofi_focus_tui.audio.continuity import analyze_boundary
+from lofi_focus_tui.audio.normalization import crossfade
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.playback import PlaybackManager
 from lofi_focus_tui.backend.tasks import GenerationTask
-from lofi_focus_tui.composition import create_blueprint
+from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.devices import choose_device
 from lofi_focus_tui.domain import BackendState, BackendStatus, SessionRequest
-from lofi_focus_tui.generation.base import ModelAdapter
+from lofi_focus_tui.generation.base import GenerationResult, ModelAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.history import HistoryStore, SessionRecord
 from lofi_focus_tui.presets import expand_preset
@@ -22,6 +25,8 @@ class SessionManager:
         model: ModelAdapter,
         generation_defaults: GenerationSettings | None = None,
         render_seconds_limit: int | None = None,
+        chunk_seconds: int | None = None,
+        crossfade_seconds: float = 1.0,
         playback: PlaybackManager | None = None,
         output_manager: OutputManager | None = None,
         history_store: HistoryStore | None = None,
@@ -29,6 +34,8 @@ class SessionManager:
         self.model = model
         self.generation_defaults = generation_defaults
         self.render_seconds_limit = render_seconds_limit
+        self.chunk_seconds = chunk_seconds
+        self.crossfade_seconds = crossfade_seconds
         self.playback = playback or PlaybackManager()
         self.output_manager = output_manager
         self.history_store = history_store
@@ -53,10 +60,7 @@ class SessionManager:
         safe_request = request.model_copy(update={"style_tags": map_style_tags(request.style_tags)})
         plan = expand_preset(safe_request)
         blueprint = create_blueprint(plan)
-        duration_limit = self.render_seconds_limit or device.recommended_render_seconds or 30
-        if device.recommended_render_seconds:
-            duration_limit = min(duration_limit, device.recommended_render_seconds)
-        duration_seconds = min(duration_limit, request.duration_minutes * 60)
+        duration_seconds, chunk_durations = self._resolve_timing(request, device)
         settings = request.generation or self.generation_defaults
         task = GenerationTask(task_id=str(uuid4()), session_id=plan.session_id)
         status = BackendStatus(
@@ -68,6 +72,8 @@ class SessionManager:
             backend=self.model.name,
             device=device.backend,
             recent_sessions=self._recent_session_labels(),
+            chunk_index=0,
+            chunk_count=len(chunk_durations),
         )
         with self._playback_lock:
             self.playback.stop()
@@ -81,6 +87,7 @@ class SessionManager:
                 plan,
                 blueprint,
                 duration_seconds,
+                chunk_durations,
                 settings,
                 device.backend,
             )
@@ -138,6 +145,7 @@ class SessionManager:
         plan,
         blueprint,
         duration_seconds: int,
+        chunk_durations: list[int],
         settings: GenerationSettings | None,
         device_backend: str,
     ) -> None:
@@ -150,11 +158,16 @@ class SessionManager:
                 message="generating",
                 progress=0.5,
                 device_backend=device_backend,
+                chunk_index=0,
+                chunk_count=len(chunk_durations),
             )
-            result = self.model.generate(
-                blueprint,
-                duration_seconds=duration_seconds,
+            result = self._generate_session_result(
+                task=task,
+                plan=plan,
+                blueprint=blueprint,
+                chunk_durations=chunk_durations,
                 settings=settings,
+                device_backend=device_backend,
             )
             self._complete_task_success(
                 task,
@@ -163,6 +176,7 @@ class SessionManager:
                 blueprint,
                 result,
                 duration_seconds,
+                len(chunk_durations),
                 settings,
                 device_backend,
             )
@@ -175,6 +189,7 @@ class SessionManager:
                 progress=task.progress,
                 device_backend=device_backend,
                 error=task.error,
+                chunk_count=len(chunk_durations),
             )
 
     def _update_task_status(
@@ -186,6 +201,8 @@ class SessionManager:
         device_backend: str,
         output_path: str | None = None,
         error: str | None = None,
+        chunk_index: int = 0,
+        chunk_count: int = 0,
     ) -> None:
         task.update(state, message, progress)
         if output_path is not None:
@@ -204,9 +221,133 @@ class SessionManager:
                 output_path=task.output_path,
                 error=task.error,
                 recent_sessions=self._recent_session_labels(),
+                chunk_index=chunk_index,
+                chunk_count=chunk_count,
                 backend=self.model.name,
                 device=device_backend,
             )
+
+    def _resolve_timing(self, request: SessionRequest, device) -> tuple[int, list[int]]:
+        requested_seconds = request.duration_minutes * 60
+        if self.chunk_seconds is None:
+            duration_limit = self.render_seconds_limit or device.recommended_render_seconds or 30
+            if device.recommended_render_seconds:
+                duration_limit = min(duration_limit, device.recommended_render_seconds)
+            duration_seconds = min(duration_limit, requested_seconds)
+            return duration_seconds, [duration_seconds]
+
+        duration_seconds = requested_seconds
+        if self.render_seconds_limit is not None:
+            duration_seconds = min(duration_seconds, self.render_seconds_limit)
+        chunk_seconds = self.chunk_seconds
+        chunk_seconds = max(1, chunk_seconds)
+        chunk_count = max(1, ceil(duration_seconds / chunk_seconds))
+        chunk_durations = [
+            min(chunk_seconds, duration_seconds - (chunk_index * chunk_seconds))
+            for chunk_index in range(chunk_count)
+        ]
+        return duration_seconds, chunk_durations
+
+    def _generate_session_result(
+        self,
+        task: GenerationTask,
+        plan,
+        blueprint,
+        chunk_durations: list[int],
+        settings: GenerationSettings | None,
+        device_backend: str,
+    ) -> GenerationResult:
+        if len(chunk_durations) == 1:
+            return self.model.generate(
+                blueprint,
+                duration_seconds=chunk_durations[0],
+                settings=settings,
+            )
+
+        chunk_results = []
+        chunk_count = len(chunk_durations)
+        for chunk_index, chunk_duration in enumerate(chunk_durations):
+            chunk_blueprint = create_chunk_blueprint(plan, chunk_index, chunk_count)
+            result = self.model.generate(
+                chunk_blueprint,
+                duration_seconds=chunk_duration,
+                settings=settings,
+            )
+            if chunk_results:
+                result = self._retry_chunk_if_needed(
+                    previous=chunk_results[-1],
+                    result=result,
+                    chunk_blueprint=chunk_blueprint,
+                    chunk_index=chunk_index,
+                    chunk_duration=chunk_duration,
+                    settings=settings,
+                )
+            chunk_results.append(result)
+            self._update_task_status(
+                task,
+                state=BackendState.GENERATING,
+                message=f"generated chunk {chunk_index + 1}/{chunk_count}",
+                progress=0.5 + ((chunk_index + 1) / chunk_count * 0.45),
+                device_backend=device_backend,
+                chunk_index=chunk_index + 1,
+                chunk_count=chunk_count,
+            )
+        return self._stitch_chunk_results(plan.session_id, chunk_results)
+
+    def _retry_chunk_if_needed(
+        self,
+        previous: GenerationResult,
+        result: GenerationResult,
+        chunk_blueprint,
+        chunk_index: int,
+        chunk_duration: int,
+        settings: GenerationSettings | None,
+    ) -> GenerationResult:
+        report = analyze_boundary(previous.audio, result.audio)
+        if report.accepted:
+            return result
+
+        retry_seed = chunk_blueprint.seed + chunk_index + 1
+        retry_blueprint = chunk_blueprint.model_copy(update={"seed": retry_seed})
+        retry_settings = settings
+        if settings is not None and settings.seed >= 0:
+            retry_settings = settings.model_copy(update={"seed": retry_seed})
+        retry_result = self.model.generate(
+            retry_blueprint,
+            duration_seconds=chunk_duration,
+            settings=retry_settings,
+        )
+        retry_report = analyze_boundary(previous.audio, retry_result.audio)
+        if not retry_report.accepted:
+            warnings = ", ".join(retry_report.warnings)
+            raise RuntimeError(f"chunk continuity failed: {warnings}")
+        return retry_result
+
+    def _stitch_chunk_results(
+        self,
+        session_id: str,
+        chunk_results: list[GenerationResult],
+    ) -> GenerationResult:
+        first = chunk_results[0]
+        audio = first.audio
+        sample_rate = first.sample_rate
+        for result in chunk_results[1:]:
+            if result.sample_rate != sample_rate:
+                raise RuntimeError("chunk sample rates differ")
+            audio = crossfade(audio, result.audio, sample_rate, self.crossfade_seconds)
+        metadata = dict(chunk_results[-1].metadata)
+        metadata.update(
+            {
+                "session_id": session_id,
+                "chunk_count": str(len(chunk_results)),
+            }
+        )
+        return GenerationResult(
+            audio=audio,
+            sample_rate=sample_rate,
+            duration_seconds=sum(result.duration_seconds for result in chunk_results),
+            metadata=metadata,
+        )
 
     def _complete_task_success(
         self,
@@ -216,6 +357,7 @@ class SessionManager:
         blueprint,
         result,
         duration_seconds: int,
+        chunk_count: int,
         settings: GenerationSettings | None,
         device_backend: str,
     ) -> None:
@@ -256,6 +398,8 @@ class SessionManager:
                     output_path=task.output_path,
                     error=task.error,
                     recent_sessions=self._recent_session_labels(),
+                    chunk_index=chunk_count,
+                    chunk_count=chunk_count,
                     backend=self.model.name,
                     device=device_backend,
                 )

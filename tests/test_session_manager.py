@@ -171,6 +171,45 @@ class FirstQuickSecondBlockingModel:
         )
 
 
+class ChunkRecordingModel:
+    name = "chunk-recording"
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls.append((blueprint, duration_seconds, settings))
+        value = 0.05 + (len(self.calls) * 0.001)
+        return GenerationResult(
+            audio=np.full(duration_seconds * 10, value, dtype=np.float32),
+            sample_rate=10,
+            duration_seconds=duration_seconds,
+            metadata={
+                "session_id": blueprint.session_id,
+                "backend": self.name,
+                "chunk": str(len(self.calls)),
+            },
+        )
+
+
+class BoundaryRetryModel:
+    name = "boundary-retry"
+
+    def __init__(self) -> None:
+        self.blueprints = []
+        self.values = [0.05, 0.9, 0.052]
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.blueprints.append(blueprint)
+        value = self.values[len(self.blueprints) - 1]
+        return GenerationResult(
+            audio=np.full(duration_seconds * 10, value, dtype=np.float32),
+            sample_rate=10,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
 def test_start_session_passes_generation_settings_to_model():
     model = RecordingModel()
     manager = SessionManager(model=model)
@@ -362,6 +401,41 @@ def test_start_session_uses_configured_render_seconds_limit():
     manager.wait_for_active_task()
 
     assert model.duration_seconds == 12
+
+
+def test_chunked_generation_splits_long_session_and_reports_progress():
+    model = ChunkRecordingModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(model=model, playback=playback, chunk_seconds=60)
+
+    status = manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert status.chunk_count == 5
+    assert status.chunk_index == 0
+    assert final_status.state == BackendState.PLAYING
+    assert final_status.chunk_count == 5
+    assert final_status.chunk_index == 5
+    assert [duration for _blueprint, duration, _settings in model.calls] == [60, 60, 60, 60, 60]
+    assert "chunk 1 of 5" in " ".join(model.calls[0][0].texture_layers)
+    assert "chunk 5 of 5" in " ".join(model.calls[-1][0].texture_layers)
+    assert playback.loaded.duration_seconds == 300
+    assert playback.loaded.audio.shape == (2960,)
+
+
+def test_chunked_generation_retries_failed_boundary_once():
+    model = BoundaryRetryModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=150)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    assert final_status.chunk_count == 2
+    assert final_status.chunk_index == 2
+    assert len(model.blueprints) == 3
+    assert model.blueprints[1].seed == model.blueprints[0].seed
+    assert model.blueprints[2].seed == model.blueprints[0].seed + 2
 
 
 class FailingModel:

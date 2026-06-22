@@ -71,7 +71,7 @@ def _build_manager(config: AppConfig) -> SessionManager:
     return SessionManager(
         model=_build_model(config.generation),
         generation_defaults=config.generation.to_settings(),
-        render_seconds_limit=config.generation.chunk_seconds,
+        chunk_seconds=config.generation.chunk_seconds,
         playback=_build_playback(config.playback),
         output_manager=OutputManager(default_output_dir()),
         history_store=HistoryStore(default_history_path()),

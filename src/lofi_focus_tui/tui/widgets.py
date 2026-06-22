@@ -17,11 +17,15 @@ def parse_style_tags(style_tags: str) -> list[str]:
 
 def render_status(status: BackendStatus) -> str:
     progress = round(status.progress * 100)
+    chunk_line = ""
+    if status.chunk_count > 1:
+        chunk_line = f"\nchunks: {status.chunk_index}/{status.chunk_count}"
     return (
         f"state: {_enum_value(status.state)}\n"
         f"backend: {status.backend}  device: {status.device}\n"
         f"progress: {progress}%\n"
         f"message: {status.message}"
+        f"{chunk_line}"
     )
 
 

@@ -23,3 +23,24 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
             "avoid abrupt timbre changes",
         ],
     )
+
+
+def create_chunk_blueprint(
+    plan: SessionPlan,
+    chunk_index: int,
+    chunk_count: int,
+) -> CompositionBlueprint:
+    blueprint = create_blueprint(plan)
+    section = blueprint.arrangement_sections[
+        min(chunk_index, len(blueprint.arrangement_sections) - 1)
+    ]
+    chunk_label = f"chunk {chunk_index + 1} of {chunk_count}"
+    return blueprint.model_copy(
+        update={
+            "texture_layers": [
+                *blueprint.texture_layers,
+                f"{chunk_label} {section} texture",
+            ],
+            "arrangement_sections": [section, chunk_label],
+        }
+    )

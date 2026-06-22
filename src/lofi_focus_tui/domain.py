@@ -84,5 +84,7 @@ class BackendStatus(BaseModel):
     output_path: str | None = None
     error: str | None = None
     recent_sessions: list[str] = Field(default_factory=list)
+    chunk_index: int = Field(default=0, ge=0)
+    chunk_count: int = Field(default=0, ge=0)
     backend: str = "mock"
     device: str = "cpu"
