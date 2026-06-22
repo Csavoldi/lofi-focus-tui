@@ -14,3 +14,15 @@ checkpoint_path = ""
 [playback]
 volume = 0.8
 fade_seconds = 1.5
+
+[ace_step_http]
+base_url = "http://127.0.0.1:8001"
+api_key = ""
+timeout_seconds = 1800.0
+
+[runpod]
+api_key = ""
+gpu_type = "NVIDIA GeForce RTX 4090"
+template_id = ""
+volume_id = ""
+auto_destroy = true

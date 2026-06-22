@@ -25,6 +25,9 @@ ace-step = [
 playback = [
   "sounddevice>=0.4.7",
 ]
+runpod = [
+  "runpod>=1.7",
+]
 
 [project.scripts]
 lofi = "lofi_focus_tui.cli:main"

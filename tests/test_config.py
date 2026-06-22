@@ -100,3 +100,40 @@ def test_generation_config_to_settings_maps_defaults():
     assert settings.guidance_scale == 7.5
     assert settings.batch_size == 2
     assert settings.seed == 123
+
+
+def test_remote_execution_config_sections_load_from_toml(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[generation]",
+                'backend = "ace-step-http"',
+                "",
+                "[ace_step_http]",
+                'base_url = "http://127.0.0.1:8001"',
+                'api_key = "secret"',
+                "timeout_seconds = 600.0",
+                "",
+                "[runpod]",
+                'api_key = "runpod-secret"',
+                'gpu_type = "NVIDIA RTX A6000"',
+                'template_id = "template-1"',
+                'volume_id = "volume-1"',
+                "auto_destroy = false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.generation.backend == "ace-step-http"
+    assert config.ace_step_http.base_url == "http://127.0.0.1:8001"
+    assert config.ace_step_http.api_key == "secret"
+    assert config.ace_step_http.timeout_seconds == 600.0
+    assert config.runpod.api_key == "runpod-secret"
+    assert config.runpod.gpu_type == "NVIDIA RTX A6000"
+    assert config.runpod.template_id == "template-1"
+    assert config.runpod.volume_id == "volume-1"
+    assert config.runpod.auto_destroy is False

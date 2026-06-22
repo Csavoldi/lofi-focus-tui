@@ -18,7 +18,7 @@ class ServerConfig(BaseModel):
 
 
 class GenerationConfig(BaseModel):
-    backend: Literal["mock", "ace-step"] = "mock"
+    backend: Literal["mock", "ace-step", "ace-step-http", "runpod"] = "mock"
     output_format: Literal["wav"] = "wav"
     inference_steps: int = Field(default=27, ge=1, le=100)
     guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
@@ -41,10 +41,26 @@ class PlaybackConfig(BaseModel):
     fade_seconds: float = Field(default=1.5, ge=0.0, le=10.0)
 
 
+class AceStepHttpConfig(BaseModel):
+    base_url: str = "http://127.0.0.1:8001"
+    api_key: str = ""
+    timeout_seconds: float = Field(default=1800.0, gt=0.0)
+
+
+class RunPodConfig(BaseModel):
+    api_key: str = ""
+    gpu_type: str = "NVIDIA GeForce RTX 4090"
+    template_id: str = ""
+    volume_id: str = ""
+    auto_destroy: bool = True
+
+
 class AppConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     playback: PlaybackConfig = Field(default_factory=PlaybackConfig)
+    ace_step_http: AceStepHttpConfig = Field(default_factory=AceStepHttpConfig)
+    runpod: RunPodConfig = Field(default_factory=RunPodConfig)
 
 
 DEFAULT_CONFIG_PATHS = [

@@ -2,10 +2,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
-from lofi_focus_tui.backend.api import _build_playback, create_app
+from lofi_focus_tui.backend.api import _build_model, _build_playback, create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
-from lofi_focus_tui.config import PlaybackConfig
+from lofi_focus_tui.config import AppConfig, GenerationConfig, PlaybackConfig
+from lofi_focus_tui.generation.ace_step import AceStepAdapter
+from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
 from lofi_focus_tui.generation.mock import MockModelAdapter
+from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 
 
 @pytest.mark.asyncio
@@ -84,3 +87,19 @@ def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):
 
     assert isinstance(playback.player, SoundDevicePlayer)
     assert playback.volume == 0.5
+
+
+def test_build_model_selects_configured_generation_backend():
+    assert isinstance(_build_model(AppConfig()), MockModelAdapter)
+    assert isinstance(
+        _build_model(AppConfig(generation=GenerationConfig(backend="ace-step"))),
+        AceStepAdapter,
+    )
+    assert isinstance(
+        _build_model(AppConfig(generation=GenerationConfig(backend="ace-step-http"))),
+        AceStepHttpAdapter,
+    )
+    assert isinstance(
+        _build_model(AppConfig(generation=GenerationConfig(backend="runpod"))),
+        RunPodAceStepAdapter,
+    )
