@@ -22,7 +22,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 ## Current Status
 
 - Roadmap created: 2026-06-20
-- Implementation status: Milestone 6 complete
+- Implementation status: Milestone 7 complete
 - Baseline verification status: `python -m ruff check src tests` and `python -m pytest -v` pass
 - Local repo path: `C:\Users\GDesktop-1\Working\Github\lofi-focus-tui`
 
@@ -37,7 +37,7 @@ When a milestone starts, change its row in the progress table to `[/]`. When all
 | [x] | 4. Session controls in the TUI | Users can configure and steer sessions from the Textual app | `feat(tui): add configurable session controls` | 37743f3fff5fea12de2bf4fdb8cd49a1a5caf4f4 |
 | [x] | 5. Output cache and history | Generated tracks, metadata, favorites, and replays persist across runs | `feat(history): persist session outputs and metadata` | 635b8f230e09acbee240330351d7a78be0fbcc83 |
 | [x] | 6. Continuity and chunk queue | Long sessions are generated as coherent chunks with crossfades | `feat(audio): add chunk queue and continuity gates` | 5b0517eac8d20b9ce49781bc94970c254ea24fc0 |
-| [ ] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` |  |
+| [x] | 7. ACE-Step HTTP and cloud execution | Backend can use embedded, local HTTP, or RunPod-style ACE-Step execution | `feat(generation): add remote ace-step clients` | 5e35156f6a6241b989711e55b4c9ae17374c4449 |
 | [ ] | 8. Quality, docs, and release polish | CLI diagnostics, CI checks, docs, and user-facing workflows are complete | `docs: add usage guide and release checklist` |  |
 
 ## Reference Inputs
@@ -86,7 +86,7 @@ Create these focused modules as milestones need them:
 - `src/lofi_focus_tui/audio/normalization.py`: loudness, clipping, silence, fade utilities.
 - `src/lofi_focus_tui/history.py`: session history and favorite/replay lookup.
 - `src/lofi_focus_tui/generation/http_ace_step.py`: local/remote ACE-Step HTTP client adapter.
-- `src/lofi_focus_tui/generation/runpod.py`: optional RunPod pod lifecycle adapter.
+- `src/lofi_focus_tui/generation/runpod.py`: optional RunPod remote adapter and lifecycle extension point.
 - `src/lofi_focus_tui/diagnostics.py`: `lofi doctor` checks.
 - `src/lofi_focus_tui/tui/widgets.py`: reusable Textual widgets once `app.py` grows beyond a small shell.
 
@@ -1005,7 +1005,7 @@ Add matching tests:
 
 ## Milestone 7: ACE-Step HTTP and Cloud Execution
 
-**Status:** [ ]
+**Status:** [x]
 
 **Goal:** Support embedded ACE-Step, local ACE-Step API, and optional cloud GPU execution.
 
@@ -1022,7 +1022,7 @@ Add matching tests:
 
 **Steps:**
 
-- [ ] Add config sections.
+- [x] Add config sections.
 
   In `config.py`:
 
@@ -1041,7 +1041,7 @@ Add matching tests:
       auto_destroy: bool = True
   ```
 
-- [ ] Create `AceStepHttpAdapter`.
+- [x] Create `AceStepHttpAdapter`.
 
   Required behavior:
 
@@ -1051,7 +1051,7 @@ Add matching tests:
   - Download `GET /v1/audio?path=...`.
   - Convert downloaded WAV into `GenerationResult`.
 
-- [ ] Add Pydantic response models.
+- [x] Add Pydantic response models.
 
   Models:
 
@@ -1061,7 +1061,7 @@ Add matching tests:
 
   Parse the ACE-Step double-encoded `result` field robustly.
 
-- [ ] Add adapter selection.
+- [x] Add adapter selection.
 
   In backend startup, choose:
 
@@ -1070,7 +1070,7 @@ Add matching tests:
   - `ace-step-http` -> `AceStepHttpAdapter`
   - `runpod` -> `RunPodAceStepAdapter`
 
-- [ ] Add RunPod support behind optional dependency.
+- [x] Add RunPod support behind optional dependency.
 
   Add:
 
@@ -1082,8 +1082,9 @@ Add matching tests:
   ```
 
   Import `runpod` lazily.
+  First pass provides a selectable `ModelAdapter` over a configured remote ACE-Step endpoint; pod create/destroy lifecycle code remains an extension point.
 
-- [ ] Add GPU diagnostics.
+- [x] Add GPU diagnostics.
 
   Extend `devices.py` with optional NVIDIA VRAM detection using `nvidia-smi`.
 
@@ -1093,7 +1094,7 @@ Add matching tests:
   - Estimate VRAM for duration and batch size.
   - Warn rather than fail when estimate is too high.
 
-- [ ] Add tests with mocked HTTP transport.
+- [x] Add tests with mocked HTTP transport.
 
   Required assertions:
 
@@ -1103,7 +1104,7 @@ Add matching tests:
   - Download writes audio bytes.
   - Adapter returns `GenerationResult`.
 
-- [ ] Verify.
+- [x] Verify.
 
   Run:
 
@@ -1112,7 +1113,7 @@ Add matching tests:
   pytest -v
   ```
 
-- [ ] Commit.
+- [x] Commit.
 
   ```bash
   git add pyproject.toml src/lofi_focus_tui/generation src/lofi_focus_tui/config.py src/lofi_focus_tui/devices.py tests
