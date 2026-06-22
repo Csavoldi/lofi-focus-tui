@@ -32,6 +32,7 @@ runpod = [
 [project.scripts]
 lofi = "lofi_focus_tui.cli:main"
 lofi-backend = "lofi_focus_tui.backend.api:main"
+lofi-doctor = "lofi_focus_tui.diagnostics:main"
 
 [build-system]
 requires = ["setuptools>=69", "wheel"]

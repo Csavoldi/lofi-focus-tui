@@ -27,6 +27,8 @@ pytest -v
 
 ## Run
 
+Mock mode is the default and does not require ACE-Step.
+
 Start the backend:
 
 ```bash
@@ -41,6 +43,21 @@ lofi
 
 With the backend running, press `s` in the TUI to start a mock deep-work session.
 The TUI will update from `idle` to `playing` after the backend accepts the session.
+
+Run diagnostics:
+
+```bash
+lofi-doctor
+```
+
+Saved sessions are written under `~/.cache/lofi-focus-tui/outputs`, with history at
+`~/.cache/lofi-focus-tui/history.jsonl`.
+
+More detail:
+
+- [Usage](docs/usage.md)
+- [Configuration](docs/configuration.md)
+- [ACE-Step modes](docs/ace-step.md)
 
 ## ACE-Step Smoke Test
 
