@@ -2,12 +2,112 @@
 
 Session-first terminal UI for local AI-generated focus music.
 
-![TUI preview](docs/tui-preview.svg)
+![TUI generating with ACE-Step](docs/tui-preview.png)
 
 The TUI instructs a local backend. The backend owns planning, ACE-Step integration,
 device selection, continuity checks, playback state, and cache.
 
 Initial development uses a deterministic mock generator before enabling ACE-Step.
+
+## Install and Run with ACE-Step
+
+This is the normal setup for Linux users who want real AI-generated focus music. You will
+use three terminal windows: one for ACE-Step, one for the Lofi backend, and one for the
+TUI.
+
+You need Python 3.11 or 3.12, Git, and [`uv`](https://docs.astral.sh/uv/). ACE-Step
+downloads its models the first time it starts, so the first launch may take a while.
+
+### 1. Install ACE-Step (once)
+
+```bash
+cd ~/Documents
+git clone https://github.com/ace-step/ACE-Step-1.5.git
+cd ACE-Step-1.5
+uv sync
+```
+
+If you already installed ACE-Step, skip the `git clone` and `uv sync` commands.
+
+### 2. Install Lofi Focus TUI (once)
+
+```bash
+cd ~/Documents
+git clone https://github.com/Csavoldi/lofi-focus-tui.git
+cd lofi-focus-tui
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[playback]"
+```
+
+If you already have this repository, just `cd` into it and activate `.venv`.
+
+### 3. Start the three pieces
+
+Keep each command running in its own terminal window.
+
+Terminal 1 — start the ACE-Step REST server:
+
+```bash
+cd ~/Documents/ACE-Step-1.5
+uv run acestep-api
+```
+
+The REST server should be available at `http://127.0.0.1:8001`. Check it from another
+terminal if needed:
+
+```bash
+curl http://127.0.0.1:8001/health
+```
+
+Terminal 2 — start the Lofi backend:
+
+```bash
+cd ~/Documents/lofi-focus-tui
+source .venv/bin/activate
+LOFI_BACKEND=ace-step-http lofi-backend
+```
+
+Terminal 3 — start the TUI:
+
+```bash
+cd ~/Documents/lofi-focus-tui
+source .venv/bin/activate
+lofi
+```
+
+The TUI is ready when it shows `backend: ace-step-http` and `message: ready`. Press `s`
+to start a session. The first generation can take a few minutes.
+
+### TUI controls
+
+```text
+s       start a session
+space   pause or resume
+x       stop
+r       refresh status
+1       change focus preset
+2       change duration
+3       change energy
+4       change style
+q       quit
+```
+
+For a first test, press `2` until the duration says `5 minutes`, then press `s`. Generated
+audio is saved under `~/.cache/lofi-focus-tui/outputs`.
+
+### If something goes wrong
+
+- **`backend: offline`**: make sure Terminal 2 is still running.
+- **ACE-Step health check fails**: make sure Terminal 1 is running the REST server on
+  port `8001`. The Gradio web UI on port `7860` is a different server and is not enough.
+- **`address already in use`**: press `Ctrl-C` in the terminal running the old process,
+  then start it again. The Lofi backend uses port `8765`; ACE-Step uses port `8001`.
+- **No sound**: the WAV is still saved. Confirm that your computer has an audio output
+  device and that you installed the `[playback]` extra above.
+
+For advanced configuration and diagnostics, see [`docs/usage.md`](docs/usage.md),
+[`docs/configuration.md`](docs/configuration.md), and [`docs/ace-step.md`](docs/ace-step.md).
 
 ## Development
 
@@ -25,9 +125,9 @@ ruff check src tests
 pytest -v
 ```
 
-## Run
+## Developer mock mode
 
-Mock mode is the default and does not require ACE-Step.
+Mock mode does not require ACE-Step and is useful for development or troubleshooting.
 
 Start the backend:
 
