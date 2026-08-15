@@ -1,14 +1,12 @@
 from lofi_focus_tui.domain import BackendStatus, EnergyLevel
+from lofi_focus_tui.options import ENERGY_OPTIONS, FOCUS_OPTIONS, PRESET_OPTIONS, STYLE_OPTIONS
 
-PRESETS = ["deep_work", "reading", "coding", "wind_down"]
 DURATIONS = [5, 25, 30, 45, 60, 90]
-ENERGIES = [EnergyLevel.LOW, EnergyLevel.STEADY, EnergyLevel.HIGH]
-STYLE_TAG_SETS = ["lofi, neo_soul", "ambient, tape", "rainy, mellow", "jazz, vinyl"]
 
 
 def cycle_value(values, current):
-    index = values.index(current)
-    return values[(index + 1) % len(values)]
+    values = list(values)
+    return values[(values.index(current) + 1) % len(values)]
 
 
 def parse_style_tags(style_tags: str) -> list[str]:
@@ -31,17 +29,18 @@ def render_status(status: BackendStatus) -> str:
 
 
 def render_session(
+    focus: str,
     preset: str,
     duration_minutes: int,
     energy: EnergyLevel,
     style_tags: str,
 ) -> str:
     return (
-        f"focus: {preset}\n"
-        f"preset: {preset}\n"
+        f"focus: {focus} — {FOCUS_OPTIONS[focus].description}\n"
+        f"preset: {preset} — {PRESET_OPTIONS[preset].description}\n"
         f"duration: {duration_minutes} minutes\n"
-        f"energy: {_enum_value(energy)}\n"
-        f"style: {style_tags}"
+        f"energy: {_enum_value(energy)} — {ENERGY_OPTIONS[energy].description}\n"
+        f"style: {style_tags} — {STYLE_OPTIONS[style_tags].description}"
     )
 
 

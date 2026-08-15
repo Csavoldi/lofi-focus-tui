@@ -1,6 +1,14 @@
 import pytest
 
 from lofi_focus_tui.domain import BackendStatus
+from lofi_focus_tui.options import (
+    ENERGY_OPTIONS,
+    FOCUS_OPTIONS,
+    PRESET_OPTIONS,
+    STYLE_OPTIONS,
+)
+from lofi_focus_tui.tui import app as app_module
+from lofi_focus_tui.tui import widgets as widgets_module
 from lofi_focus_tui.tui.app import LofiFocusApp
 from lofi_focus_tui.tui.widgets import DURATIONS
 
@@ -59,15 +67,25 @@ class FakeBackendClient:
 
 
 @pytest.mark.asyncio
-async def test_tui_renders_session_labels():
+async def test_tui_initializes_independent_focus_and_preset():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    assert app.focus == "deep_work"
+    assert app.preset == "classic_lofi"
+
+
+@pytest.mark.asyncio
+async def test_tui_renders_session_labels_with_descriptions():
     app = LofiFocusApp(backend_client=FakeBackendClient())
 
     async with app.run_test() as pilot:
         text = status_text(pilot.app)
 
-    assert "focus:" in str(text)
+    assert f"focus: deep_work — {FOCUS_OPTIONS['deep_work'].description}" in str(text)
     assert "backend: mock" in str(text)
-    assert "preset: deep_work" in str(text)
+    assert f"preset: classic_lofi — {PRESET_OPTIONS['classic_lofi'].description}" in str(text)
+    assert f"energy: steady — {ENERGY_OPTIONS['steady'].description}" in str(text)
+    assert f"style: lofi, neo_soul — {STYLE_OPTIONS['lofi, neo_soul'].description}" in str(text)
 
 
 def test_tui_duration_options_include_short_real_generation_smoke_test():
@@ -93,18 +111,53 @@ async def test_tui_start_action_uses_selected_session_values():
     app = LofiFocusApp(backend_client=backend_client)
 
     async with app.run_test() as pilot:
-        await pilot.app.action_cycle_preset()
-        await pilot.app.action_cycle_duration()
-        await pilot.app.action_cycle_energy()
-        await pilot.app.action_cycle_style_tags()
+        await pilot.press("1")
+        await pilot.press("p")
+        await pilot.press("2")
+        await pilot.press("3")
+        await pilot.press("4")
         await pilot.app.action_start_session()
 
     request = backend_client.requests[0]
     assert request.focus == "reading"
-    assert request.preset == "classic_lofi"
+    assert request.preset == "neo_soul"
     assert request.duration_minutes == 45
     assert request.energy == "high"
     assert request.style_tags == ["ambient", "tape"]
+
+
+@pytest.mark.asyncio
+async def test_tui_keys_cycle_focus_preset_and_duration_independently():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        await pilot.press("1")
+        assert pilot.app.focus == "reading"
+        assert pilot.app.preset == "classic_lofi"
+
+        await pilot.press("p")
+        assert pilot.app.preset == "neo_soul"
+
+        await pilot.press("2")
+        assert pilot.app.duration_minutes == 45
+
+
+def test_tui_registers_all_non_help_bindings():
+    keys = {binding[0] for binding in LofiFocusApp.BINDINGS}
+
+    assert keys == {"1", "p", "2", "3", "4", "s", "space", "x", "r", "q"}
+    assert "h" not in keys
+
+
+def test_tui_uses_shared_option_catalogs_without_duplicate_lists():
+    for module in (app_module, widgets_module):
+        assert module.FOCUS_OPTIONS is FOCUS_OPTIONS
+        assert module.PRESET_OPTIONS is PRESET_OPTIONS
+        assert module.ENERGY_OPTIONS is ENERGY_OPTIONS
+        assert module.STYLE_OPTIONS is STYLE_OPTIONS
+
+    for name in ("PRESETS", "ENERGIES", "STYLE_TAG_SETS"):
+        assert not hasattr(widgets_module, name)
 
 
 @pytest.mark.asyncio

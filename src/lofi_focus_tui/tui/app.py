@@ -2,12 +2,10 @@ from textual.app import App, ComposeResult
 from textual.widgets import Static
 
 from lofi_focus_tui.domain import BackendState, BackendStatus, EnergyLevel, SessionRequest
+from lofi_focus_tui.options import ENERGY_OPTIONS, FOCUS_OPTIONS, PRESET_OPTIONS, STYLE_OPTIONS
 from lofi_focus_tui.tui.backend_client import BackendClient
 from lofi_focus_tui.tui.widgets import (
     DURATIONS,
-    ENERGIES,
-    PRESETS,
-    STYLE_TAG_SETS,
     cycle_value,
     parse_style_tags,
     render_controls,
@@ -23,7 +21,8 @@ class LofiFocusApp(App[None]):
         ("space", "toggle_pause", "Pause/Resume"),
         ("x", "stop_session", "Stop"),
         ("r", "refresh_status", "Refresh"),
-        ("1", "cycle_preset", "Preset"),
+        ("1", "cycle_focus", "Focus"),
+        ("p", "cycle_preset", "Music preset"),
         ("2", "cycle_duration", "Duration"),
         ("3", "cycle_energy", "Energy"),
         ("4", "cycle_style_tags", "Style"),
@@ -49,7 +48,8 @@ class LofiFocusApp(App[None]):
             backend="local",
             device="unknown",
         )
-        self.preset = "deep_work"
+        self.focus = "deep_work"
+        self.preset = "classic_lofi"
         self.duration_minutes = 30
         self.energy = EnergyLevel.STEADY
         self.style_tags = "lofi, neo_soul"
@@ -58,6 +58,7 @@ class LofiFocusApp(App[None]):
         yield Static(render_status(self.status), id="status")
         yield Static(
             render_session(
+                self.focus,
                 self.preset,
                 self.duration_minutes,
                 self.energy,
@@ -78,6 +79,7 @@ class LofiFocusApp(App[None]):
 
     async def action_start_session(self) -> None:
         request = SessionRequest(
+            focus=self.focus,
             preset=self.preset,
             duration_minutes=self.duration_minutes,
             energy=self.energy,
@@ -101,8 +103,12 @@ class LofiFocusApp(App[None]):
     async def action_refresh_status(self) -> None:
         await self.refresh_status()
 
+    async def action_cycle_focus(self) -> None:
+        self.focus = cycle_value(FOCUS_OPTIONS, self.focus)
+        self._refresh_display()
+
     async def action_cycle_preset(self) -> None:
-        self.preset = cycle_value(PRESETS, self.preset)
+        self.preset = cycle_value(PRESET_OPTIONS, self.preset)
         self._refresh_display()
 
     async def action_cycle_duration(self) -> None:
@@ -110,17 +116,18 @@ class LofiFocusApp(App[None]):
         self._refresh_display()
 
     async def action_cycle_energy(self) -> None:
-        self.energy = cycle_value(ENERGIES, self.energy)
+        self.energy = cycle_value(ENERGY_OPTIONS, self.energy)
         self._refresh_display()
 
     async def action_cycle_style_tags(self) -> None:
-        self.style_tags = cycle_value(STYLE_TAG_SETS, self.style_tags)
+        self.style_tags = cycle_value(STYLE_OPTIONS, self.style_tags)
         self._refresh_display()
 
     def _refresh_display(self) -> None:
         self.query_one("#status", Static).update(render_status(self.status))
         self.query_one("#session", Static).update(
             render_session(
+                self.focus,
                 self.preset,
                 self.duration_minutes,
                 self.energy,
