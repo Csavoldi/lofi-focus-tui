@@ -1,3 +1,5 @@
+from enum import Enum
+
 import pytest
 
 from lofi_focus_tui.domain import BackendStatus
@@ -140,6 +142,32 @@ async def test_tui_keys_cycle_focus_preset_and_duration_independently():
 
         await pilot.press("2")
         assert pilot.app.duration_minutes == 45
+
+
+@pytest.mark.asyncio
+async def test_tui_renders_string_values_after_legacy_enum_cycles(monkeypatch):
+    class LegacyValue(str, Enum):
+        READING = "reading"
+        NEO_SOUL = "neo_soul"
+        AMBIENT_TAPE = "ambient, tape"
+
+    cycled_values = iter(
+        (LegacyValue.READING, LegacyValue.NEO_SOUL, LegacyValue.AMBIENT_TAPE)
+    )
+    monkeypatch.setattr(app_module, "cycle_value", lambda *_: next(cycled_values))
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        await pilot.press("1")
+        await pilot.press("p")
+        await pilot.press("4")
+        text = str(status_text(pilot.app))
+
+    assert (
+        "focus: reading" in text
+        and "preset: neo_soul" in text
+        and "style: ambient, tape" in text
+    )
 
 
 def test_tui_registers_all_non_help_bindings():

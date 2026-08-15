@@ -36,11 +36,11 @@ def render_session(
     style_tags: str,
 ) -> str:
     return (
-        f"focus: {focus} — {FOCUS_OPTIONS[focus].description}\n"
-        f"preset: {preset} — {PRESET_OPTIONS[preset].description}\n"
+        f"focus: {_enum_value(focus)} — {FOCUS_OPTIONS[focus].description}\n"
+        f"preset: {_enum_value(preset)} — {PRESET_OPTIONS[preset].description}\n"
         f"duration: {duration_minutes} minutes\n"
         f"energy: {_enum_value(energy)} — {ENERGY_OPTIONS[energy].description}\n"
-        f"style: {style_tags} — {STYLE_OPTIONS[style_tags].description}"
+        f"style: {_enum_value(style_tags)} — {STYLE_OPTIONS[style_tags].description}"
     )
 
 
