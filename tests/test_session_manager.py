@@ -417,10 +417,10 @@ def test_successful_generation_persists_output_and_history(tmp_path):
     assert record.preset == "ambient_tape"
     assert final_status.recent_sessions == [f"{record.session_id[:8]} ambient_tape"]
     metadata = json.loads(Path(record.metadata_path).read_text(encoding="utf-8"))
-    assert metadata["request"]["focus"] == "coding"
-    assert metadata["request"]["preset"] == "ambient_tape"
-    assert metadata["plan"]["focus"] == "coding"
-    assert metadata["plan"]["preset"] == "ambient_tape"
+    assert metadata["request"]["focus"] == record.focus == "coding"
+    assert metadata["request"]["preset"] == record.preset == "ambient_tape"
+    assert metadata["plan"]["focus"] == record.focus
+    assert metadata["plan"]["preset"] == record.preset
     assert metadata["blueprint"]["session_id"] == record.session_id
     assert metadata["seed"] == record.seed
 
