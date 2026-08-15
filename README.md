@@ -7,7 +7,7 @@ Session-first terminal UI for local AI-generated focus music.
 The TUI instructs a local backend. The backend owns planning, ACE-Step integration,
 device selection, continuity checks, playback state, and cache.
 
-Initial development uses a deterministic mock generator before enabling ACE-Step.
+The normal default is ACE-Step over HTTP; mock mode is an explicit development fallback.
 
 ## Install and Run with ACE-Step
 

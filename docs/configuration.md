@@ -29,7 +29,7 @@ The backend listens on this host and port. The TUI client uses the same values w
 
 ```toml
 [generation]
-backend = "mock"
+backend = "ace-step-http"
 output_format = "wav"
 inference_steps = 27
 guidance_scale = 15.0
@@ -38,9 +38,11 @@ chunk_seconds = 600
 checkpoint_path = ""
 ```
 
+`ace-step-http` is the default backend and uses `http://127.0.0.1:8001`.
+
 Backends:
 
-- `mock`: deterministic local test generator.
+- `mock`: deterministic local test generator for explicit development fallback.
 - `ace-step`: embedded ACE-Step Python pipeline.
 - `ace-step-http`: local or remote ACE-Step HTTP server.
 - `runpod`: RunPod-style remote adapter over a configured ACE-Step HTTP endpoint.

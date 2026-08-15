@@ -1,6 +1,7 @@
 # ACE-Step
 
-ACE-Step support is optional. Mock mode remains the default for development and CI.
+ACE-Step HTTP is the default backend using `http://127.0.0.1:8001`; mock mode is an explicit
+alternative for development and CI.
 
 ## ACE-Step-1.5 HTTP Mode
 
