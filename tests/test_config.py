@@ -1,12 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
+import lofi_focus_tui.config as config_module
 from lofi_focus_tui.config import AppConfig, GenerationConfig, load_config
 
 
 def test_default_config_loads_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("LOFI_BACKEND", raising=False)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATHS", [tmp_path / "config.toml"])
 
     config = load_config()
 

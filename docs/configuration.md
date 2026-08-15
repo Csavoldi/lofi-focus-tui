@@ -2,7 +2,9 @@
 
 `lofi-focus-tui` loads configuration from `config.toml` in the current directory, then from `~/.config/lofi-focus-tui/config.toml`. Missing files use defaults.
 
-See `config.example.toml` for a complete starting point.
+The application default is `ace-step-http` using `http://127.0.0.1:8001`. If you copy an older
+`config.example.toml` that sets `mock`, change it to `ace-step-http` or set
+`LOFI_BACKEND=ace-step-http`.
 
 focus and music preset are separate API fields.
 API requests carry separate focus and music preset fields: `focus` and `preset`.
