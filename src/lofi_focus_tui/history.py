@@ -40,7 +40,7 @@ class SessionRecord(BaseModel):
             values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
             legacy_tag = f"legacy_preset:{preset}"
             tags = values.get("tags")
-            tags = list(tags) if isinstance(tags, list) else []
+            tags = [tag for tag in tags if isinstance(tag, str)] if isinstance(tags, list) else []
             if legacy_tag not in tags:
                 tags.append(legacy_tag)
             values["tags"] = tags

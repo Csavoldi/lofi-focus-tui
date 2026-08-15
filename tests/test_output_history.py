@@ -279,3 +279,30 @@ def test_history_preserves_extra_fields_on_normal_rewrite(tmp_path):
 
     persisted = json.loads(path.read_text(encoding="utf-8"))
     assert persisted["extra_field"] == {"source": "legacy"}
+
+
+def test_history_filters_non_string_tags_before_migrating_unknown_row(tmp_path):
+    path = tmp_path / "history.jsonl"
+    row = {
+        "session_id": "unknown-list-tags",
+        "preset": "future-list",
+        "created_at": "2026-08-14T14:00:00+00:00",
+        "duration_seconds": 30,
+        "audio_path": "unknown-list-tags.wav",
+        "metadata_path": "unknown-list-tags.json",
+        "seed": 1,
+        "tags": [1, "keep", None, "also"],
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    original_bytes = path.read_bytes()
+    store = HistoryStore(path)
+
+    record = store.find("unknown-list-tags")
+    assert record is not None
+    assert record.tags == ["keep", "also", "legacy_preset:future-list"]
+    assert path.read_bytes() == original_bytes
+
+    assert store.mark_favorite("unknown-list-tags") is True
+    assert store.mark_favorite("unknown-list-tags", favorite=False) is True
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted["tags"] == ["keep", "also", "legacy_preset:future-list"]
