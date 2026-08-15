@@ -33,12 +33,14 @@ class FakeBackendClient:
         self.paused = False
         self.resumed = False
         self.stopped = False
+        self.status_calls = 0
         self.requests = []
         self.statuses = [
             BackendStatus(state="idle", message="ready", backend="mock", device="cpu")
         ]
 
     async def get_status(self) -> BackendStatus:
+        self.status_calls += 1
         if len(self.statuses) > 1:
             return self.statuses.pop(0)
         return self.statuses[0]
@@ -170,11 +172,10 @@ async def test_tui_renders_string_values_after_legacy_enum_cycles(monkeypatch):
     )
 
 
-def test_tui_registers_all_non_help_bindings():
+def test_tui_registers_main_and_help_bindings():
     keys = {binding[0] for binding in LofiFocusApp.BINDINGS}
 
-    assert keys == {"1", "p", "2", "3", "4", "s", "space", "x", "r", "q"}
-    assert "h" not in keys
+    assert keys == {"1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h"}
 
 
 def test_tui_uses_shared_option_catalogs_without_duplicate_lists():
@@ -290,3 +291,74 @@ async def test_tui_registers_periodic_status_polling():
         pass
 
     assert intervals == [(1.0, "refresh_status")]
+
+
+@pytest.mark.asyncio
+async def test_tui_option_guide_renders_every_shared_catalog_description():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        await pilot.press("h")
+        guide = pilot.app.screen
+        text = str(guide.query_one("#option-guide").render())
+
+    assert guide is not pilot.app.default_screen
+    for catalog in (FOCUS_OPTIONS, PRESET_OPTIONS, ENERGY_OPTIONS, STYLE_OPTIONS):
+        for option in catalog.values():
+            assert option.description in text
+
+
+@pytest.mark.asyncio
+async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("h")
+        selections = (
+            pilot.app.focus,
+            pilot.app.preset,
+            pilot.app.duration_minutes,
+            pilot.app.energy,
+            pilot.app.style_tags,
+        )
+        status_calls = backend_client.status_calls
+        await pilot.press("1", "p", "2", "3", "4", "s", "space", "x", "r")
+
+    assert (
+        pilot.app.focus,
+        pilot.app.preset,
+        pilot.app.duration_minutes,
+        pilot.app.energy,
+        pilot.app.style_tags,
+    ) == selections
+    assert backend_client.status_calls == status_calls
+    assert backend_client.requests == []
+    assert backend_client.started is False
+    assert backend_client.paused is False
+    assert backend_client.resumed is False
+    assert backend_client.stopped is False
+
+
+@pytest.mark.asyncio
+async def test_tui_option_guide_q_quits_through_app_binding():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        await pilot.press("h")
+        assert any(binding[1] == "app.quit" for binding in pilot.app.screen.BINDINGS)
+        await pilot.press("q")
+
+    assert pilot.app._exit is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_key", ["escape", "h"])
+async def test_tui_option_guide_closes_with_escape_or_h(close_key):
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        await pilot.press("h")
+        assert pilot.app.screen is not pilot.app.default_screen
+        await pilot.press(close_key)
+        assert pilot.app.screen is pilot.app.default_screen

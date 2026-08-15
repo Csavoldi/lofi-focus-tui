@@ -44,6 +44,23 @@ def render_session(
     )
 
 
+def render_option_guide() -> str:
+    sections = (
+        ("focus", FOCUS_OPTIONS),
+        ("music preset", PRESET_OPTIONS),
+        ("energy", ENERGY_OPTIONS),
+        ("style", STYLE_OPTIONS),
+    )
+    return "\n\n".join(
+        f"{title}:\n"
+        + "\n".join(
+            f"- {_enum_value(value)} — {option.description}"
+            for value, option in catalog.items()
+        )
+        for title, catalog in sections
+    )
+
+
 def render_controls(status: BackendStatus) -> str:
     pause_label = "resume" if _enum_value(status.state) == "paused" else "pause"
     return f"s start  space {pause_label}  x stop  r refresh"

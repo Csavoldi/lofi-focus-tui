@@ -1,4 +1,5 @@
 from textual.app import App, ComposeResult
+from textual.screen import ModalScreen
 from textual.widgets import Static
 
 from lofi_focus_tui.domain import BackendState, BackendStatus, EnergyLevel, SessionRequest
@@ -10,9 +11,21 @@ from lofi_focus_tui.tui.widgets import (
     parse_style_tags,
     render_controls,
     render_history,
+    render_option_guide,
     render_session,
     render_status,
 )
+
+
+class OptionGuideScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("h", "app.pop_screen", "Close guide"),
+        ("escape", "app.pop_screen", "Close guide"),
+        ("q", "app.quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Static(render_option_guide(), id="option-guide")
 
 
 class LofiFocusApp(App[None]):
@@ -26,6 +39,7 @@ class LofiFocusApp(App[None]):
         ("2", "cycle_duration", "Duration"),
         ("3", "cycle_energy", "Energy"),
         ("4", "cycle_style_tags", "Style"),
+        ("h", "show_guide", "Guide"),
         ("q", "quit", "Quit"),
     ]
     CSS = """
@@ -122,6 +136,9 @@ class LofiFocusApp(App[None]):
     async def action_cycle_style_tags(self) -> None:
         self.style_tags = cycle_value(STYLE_OPTIONS, self.style_tags)
         self._refresh_display()
+
+    def action_show_guide(self) -> None:
+        self.push_screen(OptionGuideScreen())
 
     def _refresh_display(self) -> None:
         self.query_one("#status", Static).update(render_status(self.status))
