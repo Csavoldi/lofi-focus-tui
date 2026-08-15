@@ -56,6 +56,44 @@ def test_output_manager_saves_valid_wav_and_metadata(tmp_path):
     assert saved_metadata["blueprint"]["tempo_bpm"] == 72
 
 
+def test_output_manager_exports_audio_and_metadata_to_selected_directory(tmp_path):
+    manager = OutputManager(tmp_path / "cache")
+    source_dir = manager.create_session_dir("session-1", "deep_work")
+    audio_path = manager.save_wav(make_result(), source_dir)
+    metadata_path = manager.save_metadata({"seed": 123}, source_dir)
+
+    exported_audio, exported_metadata = manager.export_session(
+        audio_path,
+        tmp_path / "exports" / "nested",
+    )
+
+    assert exported_audio == tmp_path / "exports" / "nested" / source_dir.name / "audio.wav"
+    assert exported_metadata == tmp_path / "exports" / "nested" / source_dir.name / "metadata.json"
+    assert exported_audio.read_bytes() == audio_path.read_bytes()
+    assert exported_metadata.read_bytes() == metadata_path.read_bytes()
+
+
+def test_output_manager_replaces_existing_export_files(tmp_path):
+    manager = OutputManager(tmp_path / "cache")
+    source_dir = manager.create_session_dir("session-1", "deep_work")
+    audio_path = manager.save_wav(make_result(), source_dir)
+    manager.save_metadata({"seed": 1}, source_dir)
+    export_dir = tmp_path / "exports"
+    manager.export_session(audio_path, export_dir)
+
+    manager.save_metadata({"seed": 2}, source_dir)
+    _, exported_metadata = manager.export_session(audio_path, export_dir)
+
+    assert json.loads(exported_metadata.read_text(encoding="utf-8")) == {"seed": 2}
+
+
+def test_output_manager_rejects_missing_export_source(tmp_path):
+    manager = OutputManager(tmp_path / "cache")
+
+    with pytest.raises(FileNotFoundError, match="audio file"):
+        manager.export_session(tmp_path / "missing" / "audio.wav", tmp_path / "exports")
+
+
 def test_history_store_lists_newest_first_and_persists_favorites(tmp_path):
     store = HistoryStore(tmp_path / "history.jsonl")
     first = SessionRecord(

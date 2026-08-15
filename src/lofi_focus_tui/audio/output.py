@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 import wave
 from pathlib import Path
 
@@ -50,3 +51,20 @@ class OutputManager:
             encoding="utf-8",
         )
         return path
+
+    def export_session(self, audio_path: Path, directory: Path) -> tuple[Path, Path]:
+        audio_path = Path(audio_path).expanduser()
+        if not audio_path.is_file():
+            raise FileNotFoundError(f"audio file not found: {audio_path}")
+        metadata_path = audio_path.parent / "metadata.json"
+        if not metadata_path.is_file():
+            raise FileNotFoundError(f"metadata file not found: {metadata_path}")
+
+        export_dir = Path(directory).expanduser()
+        session_dir = export_dir / audio_path.parent.name
+        session_dir.mkdir(parents=True, exist_ok=True)
+        exported_audio = session_dir / "audio.wav"
+        exported_metadata = session_dir / "metadata.json"
+        shutil.copy2(audio_path, exported_audio)
+        shutil.copy2(metadata_path, exported_metadata)
+        return exported_audio, exported_metadata
