@@ -1,26 +1,31 @@
 from lofi_focus_tui.domain import CompositionBlueprint, SessionPlan
+from lofi_focus_tui.options import FOCUS_OPTIONS, PRESET_OPTIONS
 
 
 def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
     low, high = plan.tempo_range
     tempo = low + (plan.seed % max(1, high - low + 1))
+    focus = FOCUS_OPTIONS[plan.focus]
+    preset = PRESET_OPTIONS[plan.preset]
 
     return CompositionBlueprint(
         session_id=plan.session_id,
         seed=plan.seed,
+        focus=plan.focus,
+        focus_constraints=list(plan.focus_constraints),
         tempo_bpm=tempo,
         key_center=plan.key_center,
         harmonic_palette=["i", "VI", "III", "VII"],
-        motif="short dusty electric-piano figure with soft delay",
-        drum_feel="soft swung lofi backbeat",
-        bass_behavior="round sustained bass with minimal jumps",
+        motif=preset.motif,
+        drum_feel=preset.drum_feel,
+        bass_behavior=preset.bass_behavior,
         texture_layers=plan.style_traits,
-        arrangement_sections=["warmup", "steady_work", "cooldown"],
+        arrangement_sections=list(focus.arrangement_sections),
         boundary_constraints=[
             "preserve stable tempo",
             "preserve key center",
             "preserve shared motif",
-            "avoid abrupt timbre changes",
+            "avoid abrupt section jumps",
         ],
     )
 

@@ -102,6 +102,8 @@ class SessionPlan(BaseModel):
 class CompositionBlueprint(BaseModel):
     session_id: str
     seed: int
+    focus: str
+    focus_constraints: list[str]
     tempo_bpm: int
     meter: Literal["4/4", "3/4", "6/8"] = "4/4"
     key_center: str

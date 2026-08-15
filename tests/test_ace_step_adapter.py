@@ -6,9 +6,9 @@ from pathlib import Path
 import numpy as np
 
 from lofi_focus_tui.audio.wav import read_wav_file
-from lofi_focus_tui.composition import create_blueprint
+from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
-from lofi_focus_tui.generation.ace_step import AceStepAdapter
+from lofi_focus_tui.generation.ace_step import AceStepAdapter, _blueprint_to_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
@@ -62,6 +62,49 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     assert result.audio.shape[0] == 88200
     assert fake_pipeline.calls[0]["audio_duration"] == 2
     assert str(blueprint.tempo_bpm) in fake_pipeline.calls[0]["prompt"]
+
+
+def test_blueprint_prompt_includes_focus_recipes_and_boundaries():
+    plan = expand_preset(
+        SessionRequest(
+            focus="coding",
+            preset="ambient_tape",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            seed=123,
+        )
+    )
+    blueprint = create_blueprint(plan)
+
+    prompt = _blueprint_to_prompt(blueprint)
+
+    assert blueprint.focus in prompt
+    assert ", ".join(blueprint.focus_constraints) in prompt
+    assert ", ".join(blueprint.arrangement_sections) in prompt
+    assert all(constraint in prompt for constraint in blueprint.boundary_constraints)
+
+
+def test_chunk_blueprint_prompt_includes_focus_recipes_and_boundaries(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="reading",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            seed=123,
+        )
+    )
+    blueprint = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+
+    adapter.generate(blueprint, duration_seconds=1)
+    prompt = fake_pipeline.calls[0]["prompt"]
+
+    assert blueprint.focus in prompt
+    assert ", ".join(blueprint.focus_constraints) in prompt
+    assert ", ".join(blueprint.arrangement_sections) in prompt
+    assert all(constraint in prompt for constraint in blueprint.boundary_constraints)
 
 
 def test_ace_step_adapter_adds_continuation_constraints_to_prompt(tmp_path):

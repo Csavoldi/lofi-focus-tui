@@ -108,6 +108,18 @@ def test_http_adapter_generates_audio_from_remote_task():
         requests.append(request)
         if request.method == "POST" and request.url.path == "/release_task":
             payload = json.loads(request.content)
+            assert set(payload) == {
+                "audio_duration",
+                "prompt",
+                "lyrics",
+                "thinking",
+                "inference_steps",
+                "guidance_scale",
+                "audio_format",
+                "batch_size",
+                "use_random_seed",
+                "seed",
+            }
             assert payload["audio_duration"] == 10
             assert payload["inference_steps"] == 12
             assert payload["audio_format"] == "wav"
@@ -170,6 +182,36 @@ def test_http_adapter_generates_audio_from_remote_task():
         "/query_result",
         "/v1/audio",
     ]
+
+
+def test_http_adapter_omits_seed_only_for_random_seed_payload():
+    payloads = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"task_id": "task-1"})
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+    )
+    settings = GenerationSettings(seed=-1)
+    blueprint = make_blueprint().model_copy(update={"seed": -1})
+
+    adapter.submit_task(blueprint, duration_seconds=10, settings=settings)
+
+    assert set(payloads[0]) == {
+        "audio_duration",
+        "prompt",
+        "lyrics",
+        "thinking",
+        "inference_steps",
+        "guidance_scale",
+        "audio_format",
+        "batch_size",
+        "use_random_seed",
+    }
+    assert payloads[0]["use_random_seed"] is True
 
 
 def test_http_adapter_raises_when_remote_task_fails():

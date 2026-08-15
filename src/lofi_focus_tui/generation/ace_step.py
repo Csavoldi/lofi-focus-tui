@@ -108,8 +108,11 @@ class AceStepAdapter:
 def _blueprint_to_prompt(blueprint: CompositionBlueprint) -> str:
     parts = [
         "instrumental focus music",
+        f"focus: {blueprint.focus}",
         f"{blueprint.tempo_bpm} bpm",
         blueprint.key_center,
+        f"focus constraints: {', '.join(blueprint.focus_constraints)}",
+        f"arrangement sections: {', '.join(blueprint.arrangement_sections)}",
         blueprint.motif,
         blueprint.drum_feel,
         blueprint.bass_behavior,
