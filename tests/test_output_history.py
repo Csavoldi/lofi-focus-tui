@@ -2,6 +2,7 @@ import json
 import wave
 
 import numpy as np
+import pytest
 
 from lofi_focus_tui.audio.output import OutputManager, slugify
 from lofi_focus_tui.generation.base import GenerationResult
@@ -306,3 +307,48 @@ def test_history_filters_non_string_tags_before_migrating_unknown_row(tmp_path):
     assert store.mark_favorite("unknown-list-tags", favorite=False) is True
     persisted = json.loads(path.read_text(encoding="utf-8"))
     assert persisted["tags"] == ["keep", "also", "legacy_preset:future-list"]
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected_focus"),
+    [("reading", "reading"), ("neo_soul", "deep_work")],
+)
+@pytest.mark.parametrize(
+    ("raw_tags", "expected_tags"),
+    [
+        (None, []),
+        ("not-a-list", []),
+        ([1, None], []),
+        (["first", 1, "second", None], ["first", "second"]),
+    ],
+)
+def test_history_normalizes_tags_for_all_migration_branches(
+    tmp_path, preset, expected_focus, raw_tags, expected_tags
+):
+    path = tmp_path / "history.jsonl"
+    row = {
+        "session_id": f"{preset}-{str(raw_tags)}",
+        "preset": preset,
+        "created_at": "2026-08-14T15:00:00+00:00",
+        "duration_seconds": 30,
+        "audio_path": "migration.wav",
+        "metadata_path": "migration.json",
+        "seed": 1,
+        "tags": raw_tags,
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    original_bytes = path.read_bytes()
+    store = HistoryStore(path)
+
+    record = store.find(row["session_id"])
+    assert record is not None
+    assert (record.focus, record.preset, record.tags) == (
+        expected_focus,
+        "classic_lofi" if preset == "reading" else preset,
+        expected_tags,
+    )
+    assert path.read_bytes() == original_bytes
+
+    assert store.mark_favorite(row["session_id"]) is True
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted["tags"] == expected_tags

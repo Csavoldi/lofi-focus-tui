@@ -29,6 +29,9 @@ class SessionRecord(BaseModel):
             return values
 
         values = dict(values)
+        tags = values.get("tags")
+        tags = [tag for tag in tags if isinstance(tag, str)] if isinstance(tags, list) else []
+        values["tags"] = tags
         preset = values.get("preset")
         if isinstance(preset, str) and preset in LEGACY_FOCUS_VALUES:
             values["focus"] = preset
@@ -39,11 +42,8 @@ class SessionRecord(BaseModel):
             values["focus"] = "deep_work"
             values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
             legacy_tag = f"legacy_preset:{preset}"
-            tags = values.get("tags")
-            tags = [tag for tag in tags if isinstance(tag, str)] if isinstance(tags, list) else []
             if legacy_tag not in tags:
                 tags.append(legacy_tag)
-            values["tags"] = tags
         return values
 
 
