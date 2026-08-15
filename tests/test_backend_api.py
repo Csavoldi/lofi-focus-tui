@@ -227,6 +227,9 @@ def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):
 
 
 def test_build_model_selects_configured_generation_backend():
+    default_model = _build_model(AppConfig())
+    assert isinstance(default_model, AceStepHttpAdapter)
+    assert default_model.base_url == "http://127.0.0.1:8001"
     assert isinstance(
         _build_model(AppConfig(generation=GenerationConfig(backend="mock"))),
         MockModelAdapter,

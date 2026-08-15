@@ -30,7 +30,7 @@ endpoint, commands run, generated output paths, and pass/fail notes.
 
 ## Gate 2: Mock Mode Workflow
 
-1. Ensure `generation.backend = "mock"` in `config.toml`, or remove local config.
+1. Ensure `generation.backend = "mock"` in `config.toml`, or set `LOFI_BACKEND=mock`.
 2. Start the backend:
 
    ```bash

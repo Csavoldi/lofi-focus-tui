@@ -146,7 +146,7 @@ Mock mode does not require ACE-Step and is useful for development or troubleshoo
 Start the backend:
 
 ```bash
-lofi-backend
+LOFI_BACKEND=mock lofi-backend
 ```
 
 Start the terminal UI in a second terminal:

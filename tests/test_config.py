@@ -6,6 +6,7 @@ from lofi_focus_tui.config import AppConfig, GenerationConfig, load_config
 
 def test_default_config_loads_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LOFI_BACKEND", raising=False)
 
     config = load_config()
 
@@ -17,9 +18,10 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
     assert config.generation.checkpoint_path == ""
 
 
-def test_config_without_backend_uses_http_default(tmp_path):
+def test_config_without_backend_uses_http_default(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text("[server]\n", encoding="utf-8")
+    monkeypatch.delenv("LOFI_BACKEND", raising=False)
 
     config = load_config(path)
 
