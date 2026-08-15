@@ -478,6 +478,26 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert playback.loaded.audio.shape == (2960,)
 
 
+def test_five_minute_session_uses_one_five_minute_chunk():
+    model = ChunkRecordingModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=600)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    manager.wait_for_active_task()
+
+    assert [duration for _blueprint, duration, _settings in model.calls] == [300]
+
+
+def test_longer_session_uses_ten_minute_chunks_and_final_remainder():
+    model = ChunkRecordingModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=600)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 11}))
+    manager.wait_for_active_task()
+
+    assert [duration for _blueprint, duration, _settings in model.calls] == [600, 60]
+
+
 def test_chunked_generation_retries_failed_boundary_once():
     model = BoundaryRetryModel()
     manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=150)

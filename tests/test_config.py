@@ -16,6 +16,15 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
     assert config.generation.checkpoint_path == ""
 
 
+def test_generation_config_defaults_to_ten_minute_chunk_cap():
+    assert GenerationConfig().chunk_seconds == 600
+
+
+def test_generation_config_rejects_chunk_cap_above_ten_minutes():
+    with pytest.raises(ValidationError):
+        GenerationConfig(chunk_seconds=601)
+
+
 def test_config_loads_from_explicit_toml(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(

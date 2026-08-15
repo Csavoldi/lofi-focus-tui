@@ -23,7 +23,7 @@ class GenerationConfig(BaseModel):
     inference_steps: int = Field(default=27, ge=1, le=100)
     guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
     batch_size: int = Field(default=1, ge=1, le=8)
-    chunk_seconds: int = Field(default=30, ge=10, le=600)
+    chunk_seconds: int = Field(default=600, ge=10, le=600)
     checkpoint_path: str = ""
 
     def to_settings(self, seed: int = -1) -> GenerationSettings:
