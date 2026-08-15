@@ -546,7 +546,9 @@ def test_chunked_generation_retries_failed_boundary_once():
     assert len(model.blueprints) == 3
     assert model.blueprints[1].seed == model.blueprints[0].seed
     assert model.blueprints[2].seed == model.blueprints[0].seed + 2
-    assert "avoid a sharp transient at the transition" in model.blueprints[2].continuation_constraints
+    assert "avoid a sharp transient at the transition" in (
+        model.blueprints[2].continuation_constraints
+    )
 
 
 def test_ordinary_boundary_warning_updates_next_prompt_without_retrying():
