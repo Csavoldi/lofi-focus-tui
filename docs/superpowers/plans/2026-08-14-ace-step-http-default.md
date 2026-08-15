@@ -18,7 +18,7 @@
 - Modify: `tests/test_backend_client.py`
 - Modify: `src/lofi_focus_tui/config.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
   Update `test_default_config_loads_without_file` to expect `ace-step-http` and
   the default URL `http://127.0.0.1:8001`. Add
@@ -30,7 +30,7 @@
   Update existing tests that intentionally exercise mock mode so they select
   `mock` explicitly rather than relying on `AppConfig()` defaults.
 
-- [ ] **Step 2: Run the focused tests to verify the default test fails**
+- [x] **Step 2: Run the focused tests to verify the default test fails**
 
   Run: `PYTHONPATH=src pytest -q tests/test_config.py`
 
@@ -39,20 +39,20 @@
   explicit environment override, unset environment, and empty environment
   assertions remain green.
 
-- [ ] **Step 3: Change the minimal implementation**
+- [x] **Step 3: Change the minimal implementation**
 
   Change only `GenerationConfig.backend`’s default literal from `"mock"` to
   `"ace-step-http"`. Keep the existing truthy environment override behavior,
   which already leaves TOML/default values intact for an unset or empty
   `LOFI_BACKEND`.
 
-- [ ] **Step 4: Run the focused tests to verify they pass**
+- [x] **Step 4: Run the focused tests to verify they pass**
 
   Run: `PYTHONPATH=src pytest -q tests/test_config.py`
 
   Expected: all configuration tests pass.
 
-- [ ] **Step 5: Commit the code and tests**
+- [x] **Step 5: Commit the code and tests**
 
   ```bash
   git add src/lofi_focus_tui/config.py tests/test_config.py
@@ -68,14 +68,14 @@
 - Modify: `docs/usage.md`
 - Modify: `docs/ace-step.md`
 
-- [ ] **Step 1: Update the normal configuration example**
+- [x] **Step 1: Update the normal configuration example**
 
   Set the documented generation backend to `ace-step-http`, state that it is
   the default, and point users to the local REST endpoint at
   `http://127.0.0.1:8001`. Keep `mock` documented as an explicit development
   fallback and align all README and ACE-Step/usage guidance with that default.
 
-- [ ] **Step 2: Clarify the fresh-install UAT path**
+- [x] **Step 2: Clarify the fresh-install UAT path**
 
   State that the default path requires the ACE-Step REST server and that the
   mock workflow is the explicit offline alternative. Update the mock gate so
@@ -83,14 +83,14 @@
   that removing local config selects mock. Keep the existing real HTTP gates
   and their commands intact.
 
-- [ ] **Step 3: Check documentation consistency**
+- [x] **Step 3: Check documentation consistency**
 
   Run: `rg -n 'backend = "mock"|backend = "ace-step-http"|127\.0\.0\.1:8001' docs/configuration.md docs/user-acceptance-testing.md README.md docs/usage.md docs/ace-step.md`
 
   Expected: normal setup/configuration text uses `ace-step-http`; mock appears
   only in explicit developer/mock workflow guidance.
 
-- [ ] **Step 4: Commit the documentation**
+- [x] **Step 4: Commit the documentation**
 
   ```bash
   git add docs/configuration.md docs/user-acceptance-testing.md
@@ -102,19 +102,19 @@
 **Files:**
 - No additional files.
 
-- [ ] **Step 1: Run the full test suite**
+- [x] **Step 1: Run the full test suite**
 
   Run: `PYTHONPATH=src pytest -q`
 
   Expected: all tests pass, with only the repository’s existing skips.
 
-- [ ] **Step 2: Run lint and whitespace checks**
+- [x] **Step 2: Run lint and whitespace checks**
 
   Run: `ruff check src tests` and `git diff --check`
 
   Expected: both commands succeed.
 
-- [ ] **Step 3: Confirm user-owned changes remain untouched**
+- [x] **Step 3: Confirm user-owned changes remain untouched**
 
   Run: `git status --short`
 
