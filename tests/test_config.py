@@ -5,9 +5,14 @@ import lofi_focus_tui.config as config_module
 from lofi_focus_tui.config import AppConfig, GenerationConfig, load_config
 
 
+@pytest.fixture(autouse=True)
+def _clear_config_environment(monkeypatch):
+    monkeypatch.delenv("LOFI_BACKEND", raising=False)
+    monkeypatch.delenv("ACESTEP_CHECKPOINT_PATH", raising=False)
+
+
 def test_default_config_loads_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("LOFI_BACKEND", raising=False)
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATHS", [tmp_path / "config.toml"])
 
     config = load_config()
@@ -23,7 +28,6 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
 def test_config_without_backend_uses_http_default(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text("[server]\n", encoding="utf-8")
-    monkeypatch.delenv("LOFI_BACKEND", raising=False)
 
     config = load_config(path)
 
@@ -96,7 +100,6 @@ def test_env_overrides_backend(tmp_path, monkeypatch):
 def test_unset_env_backend_preserves_toml_value(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
-    monkeypatch.delenv("LOFI_BACKEND", raising=False)
 
     config = load_config(path)
 
