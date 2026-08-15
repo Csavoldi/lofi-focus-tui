@@ -4,6 +4,13 @@
 
 See `config.example.toml` for a complete starting point.
 
+focus and music preset are separate API fields.
+API requests carry separate focus and music preset fields: `focus` and `preset`.
+Omitted focus and null focus follow the same normalization path.
+Legacy focus-valued presets map to matching focus plus classic_lofi.
+Valid music preset values default the separate focus field to deep_work.
+No TOML keys change.
+
 ## Server
 
 ```toml

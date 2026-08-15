@@ -31,7 +31,40 @@ The duration selector includes a 5-minute option for real-generation smoke tests
 
 ## Session Controls
 
-The TUI starts with a deep-work session. Cycle presets, duration, energy, and style fields from the keyboard, then press `s`.
+The TUI starts with a deep-work session. Choose focus, music preset, duration, energy, and style fields from the keyboard, then press `s`.
+
+```text
+1       change focus
+p       change music preset
+2       change duration
+3       change energy
+4       change style
+h       open option guide
+Escape  close option guide
+q       quit
+```
+
+Press `h` to open the option guide. Press `Escape` or `h` to close it; selection and session actions are suppressed while it is open, and `q` remains the global quit key.
+
+## Option Meanings
+
+```text
+deep_work: sustained concentration and low distraction
+reading: spacious, calm, gentle pulse
+coding: forward momentum and a steady groove
+wind_down: soft, slow decompression
+classic_lofi: dusty keys, swung drums, round bass
+neo_soul: warm chords, pocketed rhythm, mellow bass
+ambient_tape: sparse pulse, wide pads, tape haze
+jazz_vinyl: brushed drums, jazz harmony, vinyl texture
+low: soft movement and a restrained pulse
+steady: balanced movement for ordinary focus work
+high: more rhythmic momentum while remaining non-distracting
+lofi, neo_soul: warm, dusty, chord-forward texture
+ambient, tape: spacious, hazy, slowly moving texture
+rainy, mellow: soft atmosphere and subdued detail
+jazz, vinyl: brushed, tactile, lightly swinging texture
+```
 
 The status panel shows backend state, device, playback mode, generation progress, chunk progress for long sessions, and recent saved sessions.
 If no audio device is available, generated audio is saved and status reports playback as disabled.

@@ -86,12 +86,18 @@ s       start a session
 space   pause or resume
 x       stop
 r       refresh status
-1       change focus preset
+1       change focus
+p       change music preset
 2       change duration
 3       change energy
 4       change style
+h       open option guide
+Escape  close option guide
 q       quit
 ```
+
+focus and music preset are separate request fields.
+See [`docs/usage.md`](docs/usage.md) for option meanings and guide behavior.
 
 For a first test, press `2` until the duration says `5 minutes`, then press `s`. Generated
 audio is saved under `~/.cache/lofi-focus-tui/outputs`.
