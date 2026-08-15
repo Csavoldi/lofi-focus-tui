@@ -127,6 +127,9 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
             assert "instrumental focus music" in payload["prompt"]
+            assert "focus: deep_work" in payload["prompt"]
+            assert "minimal variation" in payload["prompt"]
+            assert "arrangement sections: warmup, steady_work, cooldown" in payload["prompt"]
             assert "match the previous chunk's loudness" in payload["prompt"]
             assert request.headers["authorization"] == "Bearer secret"
             return httpx.Response(200, json={"task_id": "task-1"})
