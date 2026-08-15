@@ -48,3 +48,25 @@ def test_chunk_blueprints_preserve_identity_with_chunk_context():
     assert first.texture_layers != second.texture_layers
     assert "chunk 1 of 3" in " ".join(first.texture_layers)
     assert "chunk 2 of 3" in " ".join(second.texture_layers)
+
+
+def test_chunk_blueprint_carries_continuation_constraints():
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+
+    blueprint = create_chunk_blueprint(
+        plan,
+        chunk_index=1,
+        chunk_count=2,
+        continuation_constraints=["avoid a sharp transient at the transition"],
+    )
+
+    assert blueprint.continuation_constraints == [
+        "avoid a sharp transient at the transition"
+    ]

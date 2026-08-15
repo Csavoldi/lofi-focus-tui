@@ -115,6 +115,7 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
             assert "instrumental focus music" in payload["prompt"]
+            assert "match the previous chunk's loudness" in payload["prompt"]
             assert request.headers["authorization"] == "Bearer secret"
             return httpx.Response(200, json={"task_id": "task-1"})
         if request.method == "POST" and request.url.path == "/query_result":
@@ -153,7 +154,10 @@ def test_http_adapter_generates_audio_from_remote_task():
     )
     settings = GenerationSettings(inference_steps=12, seed=456)
 
-    result = adapter.generate(make_blueprint(), duration_seconds=10, settings=settings)
+    blueprint = make_blueprint().model_copy(
+        update={"continuation_constraints": ["match the previous chunk's loudness"]}
+    )
+    result = adapter.generate(blueprint, duration_seconds=10, settings=settings)
 
     assert result.sample_rate == 22050
     assert result.duration_seconds == 10

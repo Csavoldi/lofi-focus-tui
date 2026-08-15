@@ -114,6 +114,8 @@ def _blueprint_to_prompt(blueprint: CompositionBlueprint) -> str:
         blueprint.drum_feel,
         blueprint.bass_behavior,
         ", ".join(blueprint.texture_layers),
+        ", ".join(blueprint.boundary_constraints),
+        ", ".join(blueprint.continuation_constraints),
         "continuous coherent arrangement",
         "no vocals",
     ]
