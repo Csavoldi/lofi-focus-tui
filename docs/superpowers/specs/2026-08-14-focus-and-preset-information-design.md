@@ -103,7 +103,7 @@ The independent fields map to concrete planning outputs as follows:
 
 | Input | `SessionPlan` | `CompositionBlueprint` | Metadata |
 |---|---|---|---|
-| focus | new `focus` and `focus_constraints` fields; existing `phases` remain `warmup`, `steady_work`, `cooldown` | `focus` plus arrangement sections and boundary constraints | `request.focus`, `plan.focus` |
+| focus | new `focus` and `focus_constraints` fields; existing `phases` remain `warmup`, `steady_work`, `cooldown` | `focus`, `focus_constraints`, and arrangement sections; existing continuity boundaries remain | `request.focus`, `plan.focus` |
 | preset | music recipe name | motif, drum feel, and bass behavior | `request.preset`, `plan.preset` |
 | energy | tempo range | selected tempo within that range | `request.energy`, `plan.energy` |
 | style | style traits | texture layers | `request.style_tags`, `plan.style_traits` |
@@ -114,10 +114,10 @@ unchanged; the focus-specific arrangement labels live in
 
 | Focus | `focus_constraints` | Arrangement sections | Boundary/avoid traits |
 |---|---|---|---|
-| `deep_work` | `list[str]`: `minimal variation`, `stable tempo`, `no abrupt changes` | `warmup`, `steady_work`, `cooldown` | same three constraints |
-| `reading` | `list[str]`: `spacious pacing`, `light percussion`, `no abrupt changes` | `warmup`, `reading`, `cooldown` | same three constraints |
-| `coding` | `list[str]`: `consistent forward pulse`, `stable groove`, `no abrupt changes` | `warmup`, `steady_work`, `momentum` | same three constraints |
-| `wind_down` | `list[str]`: `low density`, `soft transitions`, `no abrupt changes` | `settle`, `unwind`, `cooldown` | same three constraints |
+| `deep_work` | `list[str]`: `minimal variation`, `stable tempo`, `no abrupt changes` | `warmup`, `steady_work`, `cooldown` | same three focus constraints; preserve existing continuity boundaries |
+| `reading` | `list[str]`: `spacious pacing`, `light percussion`, `no abrupt changes` | `warmup`, `reading`, `cooldown` | same three focus constraints; preserve existing continuity boundaries |
+| `coding` | `list[str]`: `consistent forward pulse`, `stable groove`, `no abrupt changes` | `warmup`, `steady_work`, `momentum` | same three focus constraints; preserve existing continuity boundaries |
+| `wind_down` | `list[str]`: `low density`, `soft transitions`, `no abrupt changes` | `settle`, `unwind`, `cooldown` | same three focus constraints; preserve existing continuity boundaries |
 
 Preset traits must be deterministic:
 
@@ -132,9 +132,9 @@ The selected focus row and preset row combine directly; there is no hidden Carte
 lookup table. Energy selects tempo within its existing intensity rules, and `style_tags`
 are appended as modifiers.
 
-The prompt builder must include the blueprint focus, arrangement sections, and boundary
-constraints in the generation prompt. Focus therefore affects generated audio as well as
-saved plan and blueprint metadata.
+The prompt builder must include the blueprint focus, focus constraints, arrangement
+sections, and existing continuity boundary constraints in the generation prompt. Focus
+therefore affects generated audio as well as saved plan and blueprint metadata.
 
 ## TUI behavior
 
@@ -153,8 +153,9 @@ h  open the option guide
 ```
 
 The option guide lists every focus, preset, energy, and style choice with its description.
-It opens with `h` and closes with `Escape` or `h`. The existing start, pause/resume, stop,
-refresh, duration, and quit controls remain available.
+It opens with `h` and closes with `Escape` or `h`. While the guide is open, selection and
+session actions are suppressed; `q` remains a global quit control. The existing start,
+pause/resume, stop, refresh, duration, and quit controls remain available on the main view.
 
 ## Testing
 
