@@ -39,6 +39,12 @@ p       change music preset
 2       change duration
 3       change energy
 4       change style
+[       lower volume by 10%
+]       raise volume by 10%
+,       rewind 10 seconds
+.       forward 10 seconds
+0       restart the current audio without regenerating
+e       open the export dialog
 h       open option guide
 Escape  close option guide
 q       quit
@@ -83,8 +89,12 @@ rainy, mellow: soft atmosphere and subdued detail
 jazz, vinyl: brushed, tactile, lightly swinging texture
 ```
 
-The status panel shows backend state, device, playback mode, generation progress, chunk progress for long sessions, and recent saved sessions.
+The status panel shows backend state, device, playback mode, volume, playback position and duration,
+generation progress, chunk progress for long sessions, and recent saved sessions.
 If no audio device is available, generated audio is saved and status reports playback as disabled.
+
+Playback keys work on the completed session currently loaded by the backend. They do not trigger
+new generation. Volume is clamped between 0% and 100%, and seeking is clamped to the audio bounds.
 
 Long sessions are generated in quality-oriented chunks: a 5-minute request uses one 5-minute
 chunk, while longer requests use chunks up to 10 minutes with a shorter final remainder. The
@@ -108,6 +118,11 @@ History is stored as JSON lines at:
 
 Each saved session includes `audio.wav` and `metadata.json` with request, plan, blueprint, settings, device, seed, and generation metadata. Chunked metadata includes per-chunk profiles, boundary warnings, continuation handoffs, and retry counts.
 For chunked sessions, metadata includes both requested and actual stitched duration because crossfades shorten the final WAV slightly.
+
+To export a completed session, press `e`, enter a directory, and press Enter. The app creates a
+subdirectory named after the saved session and copies both `audio.wav` and `metadata.json` into it.
+The default directory is `~/Music/lofi-focus-tui`. Export never changes or deletes the cached source.
+Press `Escape` to cancel; an invalid directory leaves the dialog open with the error shown.
 
 ## Diagnostics
 
