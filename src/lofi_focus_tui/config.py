@@ -18,7 +18,7 @@ class ServerConfig(BaseModel):
 
 
 class GenerationConfig(BaseModel):
-    backend: Literal["mock", "ace-step", "ace-step-http", "runpod"] = "mock"
+    backend: Literal["mock", "ace-step", "ace-step-http", "runpod"] = "ace-step-http"
     output_format: Literal["wav"] = "wav"
     inference_steps: int = Field(default=27, ge=1, le=100)
     guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)

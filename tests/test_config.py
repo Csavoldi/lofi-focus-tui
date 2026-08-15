@@ -12,8 +12,18 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
     assert isinstance(config, AppConfig)
     assert config.server.host == "127.0.0.1"
     assert config.server.port == 8765
-    assert config.generation.backend == "mock"
+    assert config.generation.backend == "ace-step-http"
+    assert config.ace_step_http.base_url == "http://127.0.0.1:8001"
     assert config.generation.checkpoint_path == ""
+
+
+def test_config_without_backend_uses_http_default(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("[server]\n", encoding="utf-8")
+
+    config = load_config(path)
+
+    assert config.generation.backend == "ace-step-http"
 
 
 def test_generation_config_defaults_to_ten_minute_chunk_cap():
@@ -70,9 +80,31 @@ def test_missing_explicit_config_path_falls_back_to_default(tmp_path, monkeypatc
 
 def test_env_overrides_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOFI_BACKEND", "ace-step")
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+    monkeypatch.setenv("LOFI_BACKEND", "mock")
 
-    config = load_config()
+    config = load_config(path)
+
+    assert config.generation.backend == "mock"
+
+
+def test_unset_env_backend_preserves_toml_value(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+    monkeypatch.delenv("LOFI_BACKEND", raising=False)
+
+    config = load_config(path)
+
+    assert config.generation.backend == "ace-step"
+
+
+def test_empty_env_backend_preserves_toml_value(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+    monkeypatch.setenv("LOFI_BACKEND", "")
+
+    config = load_config(path)
 
     assert config.generation.backend == "ace-step"
 
