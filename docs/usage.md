@@ -36,6 +36,12 @@ The TUI starts with a deep-work session. Cycle presets, duration, energy, and st
 The status panel shows backend state, device, playback mode, generation progress, chunk progress for long sessions, and recent saved sessions.
 If no audio device is available, generated audio is saved and status reports playback as disabled.
 
+Long sessions are generated in quality-oriented chunks: a 5-minute request uses one 5-minute
+chunk, while longer requests use chunks up to 10 minutes with a shorter final remainder. The
+generator analyzes each boundary and carries only targeted continuation guidance into the
+next prompt. Severe continuity failures are retried once; the final chunks are joined with a
+fixed crossfade.
+
 ## Outputs
 
 Generated sessions are saved under:
@@ -50,7 +56,7 @@ History is stored as JSON lines at:
 ~/.cache/lofi-focus-tui/history.jsonl
 ```
 
-Each saved session includes `audio.wav` and `metadata.json` with request, plan, blueprint, settings, device, seed, and generation metadata.
+Each saved session includes `audio.wav` and `metadata.json` with request, plan, blueprint, settings, device, seed, and generation metadata. Chunked metadata includes per-chunk profiles, boundary warnings, continuation handoffs, and retry counts.
 For chunked sessions, metadata includes both requested and actual stitched duration because crossfades shorten the final WAV slightly.
 
 ## Diagnostics

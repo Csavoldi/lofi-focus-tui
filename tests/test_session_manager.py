@@ -260,6 +260,41 @@ class BoundaryRetryModel:
         )
 
 
+class OrdinaryWarningModel:
+    name = "ordinary-warning"
+
+    def __init__(self) -> None:
+        self.blueprints = []
+        self.values = [0.05, 0.30, 0.30]
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.blueprints.append(blueprint)
+        value = self.values[len(self.blueprints) - 1]
+        return GenerationResult(
+            audio=np.full(duration_seconds * 10, value, dtype=np.float32),
+            sample_rate=10,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
+class AlwaysBadBoundaryModel:
+    name = "always-bad-boundary"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls += 1
+        value = 0.05 if self.calls == 1 else 0.90
+        return GenerationResult(
+            audio=np.full(duration_seconds * 10, value, dtype=np.float32),
+            sample_rate=10,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
 def test_start_session_passes_generation_settings_to_model():
     model = RecordingModel()
     manager = SessionManager(model=model)
@@ -478,6 +513,26 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert playback.loaded.audio.shape == (2960,)
 
 
+def test_five_minute_session_uses_one_five_minute_chunk():
+    model = ChunkRecordingModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=600)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    manager.wait_for_active_task()
+
+    assert [duration for _blueprint, duration, _settings in model.calls] == [300]
+
+
+def test_longer_session_uses_ten_minute_chunks_and_final_remainder():
+    model = ChunkRecordingModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=600)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 11}))
+    manager.wait_for_active_task()
+
+    assert [duration for _blueprint, duration, _settings in model.calls] == [600, 60]
+
+
 def test_chunked_generation_retries_failed_boundary_once():
     model = BoundaryRetryModel()
     manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=150)
@@ -491,6 +546,53 @@ def test_chunked_generation_retries_failed_boundary_once():
     assert len(model.blueprints) == 3
     assert model.blueprints[1].seed == model.blueprints[0].seed
     assert model.blueprints[2].seed == model.blueprints[0].seed + 2
+    assert "avoid a sharp transient at the transition" in (
+        model.blueprints[2].continuation_constraints
+    )
+
+
+def test_ordinary_boundary_warning_updates_next_prompt_without_retrying():
+    model = OrdinaryWarningModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=100)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    assert len(model.blueprints) == 3
+    assert model.blueprints[2].continuation_constraints == [
+        "match the previous chunk's loudness at the transition"
+    ]
+
+
+def test_chunk_metadata_records_profiles_boundaries_and_handoffs():
+    model = OrdinaryWarningModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(model=model, playback=playback, chunk_seconds=100)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    manager.wait_for_active_task()
+
+    chunks = playback.loaded.metadata["chunks"]
+    assert len(chunks) == 3
+    assert chunks[0]["profile"]["sample_rate"] == 10
+    assert chunks[1]["boundary"]["warnings"] == ["loudness jump"]
+    assert chunks[1]["handoff"] == [
+        "match the previous chunk's loudness at the transition"
+    ]
+    assert chunks[1]["retry_count"] == 0
+
+
+def test_failed_severe_retry_reports_continuity_error():
+    model = AlwaysBadBoundaryModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=150)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.ERROR
+    assert "chunk continuity failed" in final_status.error
+    assert model.calls == 3
 
 
 class FailingModel:

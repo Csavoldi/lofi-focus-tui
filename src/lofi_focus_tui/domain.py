@@ -112,6 +112,7 @@ class CompositionBlueprint(BaseModel):
     texture_layers: list[str]
     arrangement_sections: list[str]
     boundary_constraints: list[str]
+    continuation_constraints: list[str] = Field(default_factory=list)
 
 
 class BackendStatus(BaseModel):

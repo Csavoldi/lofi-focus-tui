@@ -29,6 +29,7 @@ def create_chunk_blueprint(
     plan: SessionPlan,
     chunk_index: int,
     chunk_count: int,
+    continuation_constraints: list[str] | None = None,
 ) -> CompositionBlueprint:
     blueprint = create_blueprint(plan)
     section = blueprint.arrangement_sections[
@@ -42,5 +43,6 @@ def create_chunk_blueprint(
                 f"{chunk_label} {section} texture",
             ],
             "arrangement_sections": [section, chunk_label],
+            "continuation_constraints": continuation_constraints or [],
         }
     )

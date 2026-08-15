@@ -5,7 +5,11 @@ from math import ceil
 from threading import Lock
 from uuid import uuid4
 
-from lofi_focus_tui.audio.continuity import analyze_boundary
+from lofi_focus_tui.audio.continuity import (
+    analyze_boundary,
+    analyze_chunk,
+    continuation_notes,
+)
 from lofi_focus_tui.audio.normalization import crossfade
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.playback import PlaybackManager
@@ -275,19 +279,22 @@ class SessionManager:
         settings: GenerationSettings | None,
         device_backend: str,
     ) -> GenerationResult:
-        if len(chunk_durations) == 1:
-            return self._generate_chunk(
-                task,
-                blueprint,
-                duration_seconds=chunk_durations[0],
-                settings=settings,
-            )
-
         chunk_results = []
+        chunk_metadata = []
         chunk_count = len(chunk_durations)
+        handoff: list[str] = []
         for chunk_index, chunk_duration in enumerate(chunk_durations):
             self._raise_if_cancelled(task)
-            chunk_blueprint = create_chunk_blueprint(plan, chunk_index, chunk_count)
+            chunk_blueprint = (
+                blueprint
+                if chunk_count == 1
+                else create_chunk_blueprint(
+                    plan,
+                    chunk_index,
+                    chunk_count,
+                    continuation_constraints=handoff,
+                )
+            )
             result = self._generate_chunk(
                 task,
                 chunk_blueprint,
@@ -295,17 +302,47 @@ class SessionManager:
                 settings=settings,
             )
             self._raise_if_cancelled(task)
+            retry_count = 0
+            boundary_report = None
             if chunk_results:
-                result = self._retry_chunk_if_needed(
-                    task=task,
-                    previous=chunk_results[-1],
-                    result=result,
-                    chunk_blueprint=chunk_blueprint,
-                    chunk_index=chunk_index,
-                    chunk_duration=chunk_duration,
-                    settings=settings,
+                boundary_report = analyze_boundary(
+                    chunk_results[-1].audio,
+                    result.audio,
+                    sample_rate=result.sample_rate,
                 )
+                if boundary_report.severe:
+                    result = self._retry_chunk_if_needed(
+                        task=task,
+                        previous=chunk_results[-1],
+                        result=result,
+                        report=boundary_report,
+                        chunk_blueprint=chunk_blueprint,
+                        chunk_index=chunk_index,
+                        chunk_duration=chunk_duration,
+                        settings=settings,
+                    )
+                    retry_count = 1
+                    boundary_report = analyze_boundary(
+                        chunk_results[-1].audio,
+                        result.audio,
+                        sample_rate=result.sample_rate,
+                    )
+                handoff = continuation_notes(boundary_report)
+            else:
+                handoff = []
             chunk_results.append(result)
+            chunk_metadata.append(
+                {
+                    "index": chunk_index,
+                    "duration_seconds": chunk_duration,
+                    "profile": analyze_chunk(result.audio, result.sample_rate).to_dict(),
+                    "boundary": (
+                        boundary_report.to_dict() if boundary_report is not None else None
+                    ),
+                    "handoff": list(handoff),
+                    "retry_count": retry_count,
+                }
+            )
             self._update_task_status(
                 task,
                 state=BackendState.GENERATING,
@@ -315,7 +352,7 @@ class SessionManager:
                 chunk_index=chunk_index + 1,
                 chunk_count=chunk_count,
             )
-        return self._stitch_chunk_results(plan.session_id, chunk_results)
+        return self._stitch_chunk_results(plan.session_id, chunk_results, chunk_metadata)
 
     def _generate_chunk(
         self,
@@ -345,17 +382,22 @@ class SessionManager:
         task: GenerationTask,
         previous: GenerationResult,
         result: GenerationResult,
+        report,
         chunk_blueprint,
         chunk_index: int,
         chunk_duration: int,
         settings: GenerationSettings | None,
     ) -> GenerationResult:
-        report = analyze_boundary(previous.audio, result.audio)
-        if report.accepted:
+        if not report.severe:
             return result
 
         retry_seed = chunk_blueprint.seed + chunk_index + 1
-        retry_blueprint = chunk_blueprint.model_copy(update={"seed": retry_seed})
+        retry_blueprint = chunk_blueprint.model_copy(
+            update={
+                "seed": retry_seed,
+                "continuation_constraints": continuation_notes(report),
+            }
+        )
         retry_settings = settings
         if settings is not None and settings.seed >= 0:
             retry_settings = settings.model_copy(update={"seed": retry_seed})
@@ -365,7 +407,11 @@ class SessionManager:
             duration_seconds=chunk_duration,
             settings=retry_settings,
         )
-        retry_report = analyze_boundary(previous.audio, retry_result.audio)
+        retry_report = analyze_boundary(
+            previous.audio,
+            retry_result.audio,
+            sample_rate=retry_result.sample_rate,
+        )
         if not retry_report.accepted:
             warnings = ", ".join(retry_report.warnings)
             raise RuntimeError(f"chunk continuity failed: {warnings}")
@@ -375,6 +421,7 @@ class SessionManager:
         self,
         session_id: str,
         chunk_results: list[GenerationResult],
+        chunk_metadata: list[dict],
     ) -> GenerationResult:
         first = chunk_results[0]
         audio = first.audio
@@ -392,6 +439,7 @@ class SessionManager:
                     sum(result.duration_seconds for result in chunk_results)
                 ),
                 "actual_duration_seconds": f"{len(audio) / sample_rate:.6f}",
+                "chunks": chunk_metadata,
             }
         )
         return GenerationResult(

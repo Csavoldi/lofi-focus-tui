@@ -64,6 +64,26 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     assert str(blueprint.tempo_bpm) in fake_pipeline.calls[0]["prompt"]
 
 
+def test_ace_step_adapter_adds_continuation_constraints_to_prompt(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+    blueprint = create_blueprint(plan).model_copy(
+        update={"continuation_constraints": ["match the previous chunk's loudness"]}
+    )
+
+    adapter.generate(blueprint, duration_seconds=1)
+
+    assert "match the previous chunk's loudness" in fake_pipeline.calls[0]["prompt"]
+
+
 def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
     fake_pipeline = FakePipeline()
     adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)

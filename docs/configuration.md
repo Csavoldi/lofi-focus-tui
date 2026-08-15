@@ -23,7 +23,7 @@ output_format = "wav"
 inference_steps = 27
 guidance_scale = 15.0
 batch_size = 1
-chunk_seconds = 30
+chunk_seconds = 600
 checkpoint_path = ""
 ```
 
@@ -34,7 +34,15 @@ Backends:
 - `ace-step-http`: local or remote ACE-Step HTTP server.
 - `runpod`: RunPod-style remote adapter over a configured ACE-Step HTTP endpoint.
 
-`chunk_seconds` controls long-session chunk size. Chunks are checked for continuity and stitched with crossfades.
+`chunk_seconds` is the maximum chunk size and defaults to 600 seconds (10 minutes). The
+session policy uses one 300-second chunk for a 5-minute request and chunks up to 600 seconds
+for longer requests; the final chunk can be shorter. Set a lower value between 10 and 600
+seconds to cap chunk size for a constrained machine.
+
+Each generated chunk is checked for loudness, clipping, silence, boundary clicks, and
+spectral changes. Ordinary warnings become continuation notes for the following chunk.
+Severe boundaries retry once with corrective prompt constraints. Accepted chunks are joined
+with the existing fixed crossfade.
 `batch_size` is passed to ACE-Step backends.
 
 ## Playback
