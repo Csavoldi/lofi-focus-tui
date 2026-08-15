@@ -6,8 +6,9 @@ from lofi_focus_tui.presets import expand_preset
 def test_blueprint_carries_continuity_identity():
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
-            duration_minutes=90,
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
             energy=EnergyLevel.STEADY,
             style_tags=["lofi", "neo_soul"],
             avoid_tags=["vocals"],
@@ -25,8 +26,9 @@ def test_blueprint_carries_continuity_identity():
 def test_chunk_blueprints_preserve_identity_with_chunk_context():
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
-            duration_minutes=90,
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
             energy=EnergyLevel.STEADY,
             style_tags=["lofi", "neo_soul"],
             avoid_tags=["vocals"],

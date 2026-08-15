@@ -45,7 +45,8 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
+            focus="deep_work",
+            preset="classic_lofi",
             duration_minutes=30,
             energy=EnergyLevel.STEADY,
             style_tags=["lofi"],
@@ -68,7 +69,8 @@ def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
     adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
+            focus="deep_work",
+            preset="classic_lofi",
             duration_minutes=30,
             energy=EnergyLevel.STEADY,
             seed=123,

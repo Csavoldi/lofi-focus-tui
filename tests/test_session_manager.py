@@ -15,7 +15,8 @@ from lofi_focus_tui.history import HistoryStore
 
 def make_request(generation=None):
     return SessionRequest(
-        preset="deep_work",
+        focus="deep_work",
+        preset="classic_lofi",
         duration_minutes=30,
         energy=EnergyLevel.STEADY,
         style_tags=["lofi"],
@@ -402,7 +403,8 @@ def test_successful_generation_persists_output_and_history(tmp_path):
         render_seconds_limit=1,
     )
 
-    manager.start_session(make_request())
+    request = make_request().model_copy(update={"focus": "coding", "preset": "ambient_tape"})
+    manager.start_session(request)
     final_status = manager.wait_for_active_task()
 
     assert final_status.state == BackendState.PLAYING
@@ -411,10 +413,14 @@ def test_successful_generation_persists_output_and_history(tmp_path):
     assert audio_path.exists()
     record = history_store.list(limit=1)[0]
     assert record.audio_path == str(audio_path)
-    assert record.preset == "deep_work"
-    assert final_status.recent_sessions == [f"{record.session_id[:8]} deep_work"]
+    assert record.focus == "coding"
+    assert record.preset == "ambient_tape"
+    assert final_status.recent_sessions == [f"{record.session_id[:8]} ambient_tape"]
     metadata = json.loads(Path(record.metadata_path).read_text(encoding="utf-8"))
-    assert metadata["request"]["preset"] == "deep_work"
+    assert metadata["request"]["focus"] == "coding"
+    assert metadata["request"]["preset"] == "ambient_tape"
+    assert metadata["plan"]["focus"] == "coding"
+    assert metadata["plan"]["preset"] == "ambient_tape"
     assert metadata["blueprint"]["session_id"] == record.session_id
     assert metadata["seed"] == record.seed
 

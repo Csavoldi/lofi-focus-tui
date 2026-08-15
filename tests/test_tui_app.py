@@ -100,7 +100,8 @@ async def test_tui_start_action_uses_selected_session_values():
         await pilot.app.action_start_session()
 
     request = backend_client.requests[0]
-    assert request.preset == "reading"
+    assert request.focus == "reading"
+    assert request.preset == "classic_lofi"
     assert request.duration_minutes == 45
     assert request.energy == "high"
     assert request.style_tags == ["ambient", "tape"]

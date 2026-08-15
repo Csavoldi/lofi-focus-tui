@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class SessionRecord(BaseModel):
     session_id: str
     preset: str
+    focus: str = "deep_work"
     created_at: str
     duration_seconds: int
     audio_path: str

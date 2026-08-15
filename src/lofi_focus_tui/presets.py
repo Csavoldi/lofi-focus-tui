@@ -2,6 +2,7 @@ import hashlib
 from uuid import uuid4
 
 from lofi_focus_tui.domain import EnergyLevel, SessionPhase, SessionPlan, SessionRequest
+from lofi_focus_tui.options import FOCUS_OPTIONS
 
 
 def expand_preset(request: SessionRequest) -> SessionPlan:
@@ -15,6 +16,7 @@ def expand_preset(request: SessionRequest) -> SessionPlan:
 
     return SessionPlan(
         session_id=str(uuid4()),
+        focus=request.focus,
         seed=seed,
         preset=request.preset,
         duration_minutes=request.duration_minutes,
@@ -24,6 +26,7 @@ def expand_preset(request: SessionRequest) -> SessionPlan:
         key_center="minor pentatonic",
         style_traits=[tag.replace("_", " ") for tag in request.style_tags],
         avoid_traits=sorted(set(avoid_traits)),
+        focus_constraints=list(FOCUS_OPTIONS[request.focus].focus_constraints),
         continuity_requirements=[
             "stable tempo",
             "consistent key center",

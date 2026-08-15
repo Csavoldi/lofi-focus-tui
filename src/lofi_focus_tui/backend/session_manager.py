@@ -488,6 +488,7 @@ class SessionManager:
         record = SessionRecord(
             session_id=plan.session_id,
             preset=plan.preset,
+            focus=plan.focus,
             created_at=datetime.now(UTC).isoformat(),
             duration_seconds=duration_seconds,
             audio_path=str(audio_path),

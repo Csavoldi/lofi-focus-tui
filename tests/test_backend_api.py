@@ -31,7 +31,8 @@ async def test_start_session_endpoint_returns_generating():
         response = await client.post(
             "/sessions",
             json={
-                "preset": "deep_work",
+                "focus": "deep_work",
+                "preset": "classic_lofi",
                 "duration_minutes": 30,
                 "energy": "steady",
                 "style_tags": ["lofi"],
@@ -55,7 +56,8 @@ async def test_status_endpoint_reports_playing_after_task_completes():
         start_response = await client.post(
             "/sessions",
             json={
-                "preset": "deep_work",
+                "focus": "deep_work",
+                "preset": "classic_lofi",
                 "duration_minutes": 30,
                 "energy": "steady",
                 "style_tags": ["lofi"],
@@ -69,6 +71,39 @@ async def test_status_endpoint_reports_playing_after_task_completes():
     assert status_response.status_code == 200
     assert status_response.json()["state"] == "playing"
     assert status_response.json()["progress"] == 1.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "focus": "unknown",
+            "preset": "classic_lofi",
+            "duration_minutes": 30,
+            "energy": "steady",
+        },
+        {
+            "focus": "deep_work",
+            "preset": "unknown",
+            "duration_minutes": 30,
+            "energy": "steady",
+        },
+        {
+            "focus": "coding",
+            "preset": "reading",
+            "duration_minutes": 30,
+            "energy": "steady",
+        },
+    ],
+)
+async def test_start_session_rejects_invalid_request_at_boundary(payload):
+    transport = ASGITransport(app=create_app(manager=SessionManager(model=MockModelAdapter())))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/sessions", json=payload)
+
+    assert response.status_code == 422
 
 
 def test_build_playback_uses_null_player_without_sounddevice(monkeypatch):

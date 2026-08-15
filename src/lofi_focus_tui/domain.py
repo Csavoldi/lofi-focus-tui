@@ -8,7 +8,7 @@ except ImportError:  # pragma: no cover - compatibility for Python 3.10
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from lofi_focus_tui.generation.settings import GenerationSettings
 
@@ -36,6 +36,7 @@ class BackendState(StrEnum):
 
 
 class SessionRequest(BaseModel):
+    focus: str = "deep_work"
     preset: str
     duration_minutes: int = Field(ge=5, le=240)
     energy: EnergyLevel
@@ -45,9 +46,45 @@ class SessionRequest(BaseModel):
     generation: GenerationSettings | None = None
     seed: int | None = Field(default=None, ge=0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_focus(cls, values):
+        if not isinstance(values, dict):
+            return values
+
+        values = dict(values)
+        if values.get("focus") is None:
+            from lofi_focus_tui.options import LEGACY_FOCUS_VALUES, FocusValue, MusicPresetValue
+
+            if values.get("preset") in LEGACY_FOCUS_VALUES:
+                values["focus"] = values["preset"]
+                values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
+            else:
+                values["focus"] = FocusValue.DEEP_WORK.value
+        return values
+
+    @field_validator("focus")
+    @classmethod
+    def validate_focus(cls, value: str) -> str:
+        from lofi_focus_tui.options import FOCUS_OPTIONS
+
+        if value not in FOCUS_OPTIONS:
+            raise ValueError(f"Unknown focus: {value}")
+        return value
+
+    @field_validator("preset")
+    @classmethod
+    def validate_preset(cls, value: str) -> str:
+        from lofi_focus_tui.options import PRESET_OPTIONS
+
+        if value not in PRESET_OPTIONS:
+            raise ValueError(f"Unknown music preset: {value}")
+        return value
+
 
 class SessionPlan(BaseModel):
     session_id: str
+    focus: str
     seed: int
     preset: str
     duration_minutes: int
@@ -57,6 +94,7 @@ class SessionPlan(BaseModel):
     key_center: str
     style_traits: list[str]
     avoid_traits: list[str]
+    focus_constraints: list[str]
     continuity_requirements: list[str]
 
 

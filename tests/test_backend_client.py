@@ -24,7 +24,8 @@ async def test_backend_client_starts_session_through_api():
     manager = SessionManager(model=MockModelAdapter())
     client = BackendClient(transport=ASGITransport(app=create_app(manager=manager)))
     request = SessionRequest(
-        preset="deep_work",
+        focus="deep_work",
+        preset="classic_lofi",
         duration_minutes=30,
         energy=EnergyLevel.STEADY,
         style_tags=["lofi"],
@@ -48,7 +49,8 @@ async def test_backend_client_controls_session_through_api():
     manager = SessionManager(model=MockModelAdapter())
     client = BackendClient(transport=ASGITransport(app=create_app(manager=manager)))
     request = SessionRequest(
-        preset="deep_work",
+        focus="deep_work",
+        preset="classic_lofi",
         duration_minutes=30,
         energy=EnergyLevel.STEADY,
         style_tags=["lofi"],
