@@ -222,7 +222,7 @@ Add matching tests:
 
 
   class GenerationConfig(BaseModel):
-      backend: str = "mock"
+      backend: str = "ace-step-http"
       output_format: str = "wav"
       inference_steps: int = Field(default=27, ge=1, le=100)
       guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
@@ -274,7 +274,7 @@ Add matching tests:
 
       assert isinstance(config, AppConfig)
       assert config.server.port == 8765
-      assert config.generation.backend == "mock"
+      assert config.generation.backend == "ace-step-http"
 
 
   def test_config_loads_from_explicit_toml(tmp_path):
@@ -377,7 +377,7 @@ Add matching tests:
   port = 8765
 
   [generation]
-  backend = "mock"
+  backend = "ace-step-http"
   output_format = "wav"
   inference_steps = 27
   guidance_scale = 15.0
