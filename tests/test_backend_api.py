@@ -106,6 +106,35 @@ async def test_start_session_rejects_invalid_request_at_boundary(payload):
     assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"preset": [], "duration_minutes": 30, "energy": "steady"},
+        {"preset": {}, "duration_minutes": 30, "energy": "steady"},
+        {
+            "focus": [],
+            "preset": "classic_lofi",
+            "duration_minutes": 30,
+            "energy": "steady",
+        },
+        {
+            "focus": {},
+            "preset": "classic_lofi",
+            "duration_minutes": 30,
+            "energy": "steady",
+        },
+    ],
+)
+async def test_start_session_rejects_non_string_option_shapes_at_boundary(payload):
+    transport = ASGITransport(app=create_app(manager=SessionManager(model=MockModelAdapter())))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/sessions", json=payload)
+
+    assert response.status_code == 422
+
+
 def test_build_playback_uses_null_player_without_sounddevice(monkeypatch):
     monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: False))
 

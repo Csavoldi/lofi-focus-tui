@@ -56,8 +56,9 @@ class SessionRequest(BaseModel):
         if values.get("focus") is None:
             from lofi_focus_tui.options import LEGACY_FOCUS_VALUES, FocusValue, MusicPresetValue
 
-            if values.get("preset") in LEGACY_FOCUS_VALUES:
-                values["focus"] = values["preset"]
+            preset = values.get("preset")
+            if isinstance(preset, str) and preset in LEGACY_FOCUS_VALUES:
+                values["focus"] = preset
                 values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
             else:
                 values["focus"] = FocusValue.DEEP_WORK.value
