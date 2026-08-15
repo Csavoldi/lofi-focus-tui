@@ -83,6 +83,24 @@ class SessionRequest(BaseModel):
         return value
 
 
+class VolumeAdjustment(BaseModel):
+    delta: float = Field(ge=-1.0, le=1.0)
+
+
+class SeekAdjustment(BaseModel):
+    seconds: float = Field(ge=-86400.0, le=86400.0)
+
+
+class ExportRequest(BaseModel):
+    directory: str = Field(min_length=1)
+
+
+class ExportResponse(BaseModel):
+    message: str
+    audio_path: str
+    metadata_path: str
+
+
 class SessionPlan(BaseModel):
     session_id: str
     focus: str
@@ -131,3 +149,6 @@ class BackendStatus(BaseModel):
     backend: str = "mock"
     device: str = "cpu"
     playback: str = "unknown"
+    volume: float = Field(default=0.8, ge=0.0, le=1.0)
+    position_seconds: float = Field(default=0.0, ge=0.0)
+    duration_seconds: float = Field(default=0.0, ge=0.0)

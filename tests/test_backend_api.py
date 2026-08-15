@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
 from lofi_focus_tui.backend.api import _build_model, _build_playback, create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
@@ -71,6 +72,77 @@ async def test_status_endpoint_reports_playing_after_task_completes():
     assert status_response.status_code == 200
     assert status_response.json()["state"] == "playing"
     assert status_response.json()["progress"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_playback_control_endpoints_update_status():
+    manager = SessionManager(model=MockModelAdapter(), render_seconds_limit=1)
+    transport = ASGITransport(app=create_app(manager=manager))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/sessions",
+            json={
+                "preset": "classic_lofi",
+                "duration_minutes": 5,
+                "energy": "steady",
+            },
+        )
+        manager.wait_for_active_task()
+        volume_response = await client.post("/sessions/volume", json={"delta": 0.1})
+        seek_response = await client.post("/sessions/seek", json={"seconds": 10})
+        restart_response = await client.post("/sessions/restart")
+
+    assert volume_response.status_code == 200
+    assert volume_response.json()["volume"] == 0.9
+    assert seek_response.status_code == 200
+    assert seek_response.json()["position_seconds"] == 1.0
+    assert restart_response.status_code == 200
+    assert restart_response.json()["position_seconds"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_export_endpoint_copies_completed_session_files(tmp_path):
+    manager = SessionManager(
+        model=MockModelAdapter(),
+        render_seconds_limit=1,
+        output_manager=OutputManager(tmp_path / "cache"),
+    )
+    transport = ASGITransport(app=create_app(manager=manager))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/sessions",
+            json={
+                "preset": "classic_lofi",
+                "duration_minutes": 5,
+                "energy": "steady",
+            },
+        )
+        manager.wait_for_active_task()
+        response = await client.post(
+            "/sessions/export",
+            json={"directory": str(tmp_path / "exports")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"] == "session exported"
+    assert body["audio_path"].endswith("/audio.wav")
+    assert body["metadata_path"].endswith("/metadata.json")
+
+
+@pytest.mark.asyncio
+async def test_export_endpoint_rejects_missing_completed_session():
+    transport = ASGITransport(app=create_app(manager=SessionManager(model=MockModelAdapter())))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/sessions/export",
+            json={"directory": "/tmp/lofi-focus-export-test"},
+        )
+
+    assert response.status_code == 409
 
 
 @pytest.mark.asyncio

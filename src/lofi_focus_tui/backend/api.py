@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from lofi_focus_tui.audio.cache import default_history_path, default_output_dir
 from lofi_focus_tui.audio.output import OutputManager
@@ -14,7 +14,14 @@ from lofi_focus_tui.config import (
     RunPodConfig,
     load_config,
 )
-from lofi_focus_tui.domain import BackendStatus, SessionRequest
+from lofi_focus_tui.domain import (
+    BackendStatus,
+    ExportRequest,
+    ExportResponse,
+    SeekAdjustment,
+    SessionRequest,
+    VolumeAdjustment,
+)
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.base import ModelAdapter
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
@@ -50,6 +57,30 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
     @app.post("/sessions/stop", response_model=BackendStatus)
     async def stop_session() -> BackendStatus:
         return session_manager.stop_session()
+
+    @app.post("/sessions/volume", response_model=BackendStatus)
+    async def adjust_volume(request: VolumeAdjustment) -> BackendStatus:
+        session_manager.adjust_volume(request.delta)
+        return session_manager.health()
+
+    @app.post("/sessions/seek", response_model=BackendStatus)
+    async def seek_session(request: SeekAdjustment) -> BackendStatus:
+        session_manager.seek_playback(request.seconds)
+        return session_manager.health()
+
+    @app.post("/sessions/restart", response_model=BackendStatus)
+    async def restart_session() -> BackendStatus:
+        session_manager.restart_playback()
+        return session_manager.health()
+
+    @app.post("/sessions/export", response_model=ExportResponse)
+    async def export_session(request: ExportRequest) -> ExportResponse:
+        try:
+            return session_manager.export_current(request.directory)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app
 

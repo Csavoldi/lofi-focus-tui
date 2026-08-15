@@ -2,6 +2,7 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 from inspect import signature
 from math import ceil
+from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
@@ -16,7 +17,12 @@ from lofi_focus_tui.audio.playback import PlaybackManager
 from lofi_focus_tui.backend.tasks import GenerationTask
 from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.devices import choose_device
-from lofi_focus_tui.domain import BackendState, BackendStatus, SessionRequest
+from lofi_focus_tui.domain import (
+    BackendState,
+    BackendStatus,
+    ExportResponse,
+    SessionRequest,
+)
 from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult, ModelAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.history import HistoryStore, SessionRecord
@@ -59,7 +65,8 @@ class SessionManager:
 
     def health(self) -> BackendStatus:
         with self._lock:
-            return self._status.model_copy()
+            status = self._status.model_copy()
+        return status.model_copy(update=self._playback_status_fields())
 
     def start_session(self, request: SessionRequest) -> BackendStatus:
         device = choose_device(request.device_preference)
@@ -119,7 +126,7 @@ class SessionManager:
                 self._status = self._status.model_copy(
                     update={"state": BackendState.PAUSED, "message": "paused"}
                 )
-            return self._status.model_copy()
+            return self._status.model_copy(update=self._playback_status_fields())
 
     def resume_session(self) -> BackendStatus:
         with self._playback_lock:
@@ -129,7 +136,39 @@ class SessionManager:
                 self._status = self._status.model_copy(
                     update={"state": BackendState.PLAYING, "message": "playing"}
                 )
-            return self._status.model_copy()
+            return self._status.model_copy(update=self._playback_status_fields())
+
+    def adjust_volume(self, delta: float) -> BackendStatus:
+        with self._playback_lock:
+            self.playback.adjust_volume(delta)
+        return self.health()
+
+    def seek_playback(self, seconds: float) -> BackendStatus:
+        with self._playback_lock:
+            self.playback.seek(seconds)
+        return self.health()
+
+    def restart_playback(self) -> BackendStatus:
+        with self._playback_lock:
+            self.playback.restart()
+        return self.health()
+
+    def export_current(self, directory: str) -> ExportResponse:
+        if self.output_manager is None:
+            raise RuntimeError("no completed audio session to export")
+        with self._playback_lock:
+            with self._lock:
+                output_path = self._status.output_path
+            if output_path is None:
+                raise RuntimeError("no completed audio session to export")
+            audio_path, metadata_path = self.output_manager.export_session(
+                Path(output_path), Path(directory)
+            )
+        return ExportResponse(
+            message="session exported",
+            audio_path=str(audio_path),
+            metadata_path=str(metadata_path),
+        )
 
     def stop_session(self) -> BackendStatus:
         with self._lock:
@@ -570,6 +609,13 @@ class SessionManager:
 
     def _playback_mode(self) -> str:
         return str(getattr(self.playback, "mode", "custom"))
+
+    def _playback_status_fields(self) -> dict[str, float]:
+        return {
+            "volume": float(getattr(self.playback, "volume", 0.8)),
+            "position_seconds": float(getattr(self.playback, "position_seconds", 0.0)),
+            "duration_seconds": float(getattr(self.playback, "duration_seconds", 0.0)),
+        }
 
     @staticmethod
     def _output_path(metadata: dict[str, str]) -> str | None:
