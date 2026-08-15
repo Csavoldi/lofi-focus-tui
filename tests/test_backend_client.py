@@ -12,7 +12,11 @@ from lofi_focus_tui.tui.backend_client import BackendClient
 
 @pytest.mark.asyncio
 async def test_backend_client_gets_status_from_api():
-    client = BackendClient(transport=ASGITransport(app=create_app()))
+    client = BackendClient(
+        transport=ASGITransport(
+            app=create_app(manager=SessionManager(model=MockModelAdapter()))
+        )
+    )
 
     status = await client.get_status()
 

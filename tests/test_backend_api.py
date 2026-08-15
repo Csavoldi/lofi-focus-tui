@@ -227,7 +227,10 @@ def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):
 
 
 def test_build_model_selects_configured_generation_backend():
-    assert isinstance(_build_model(AppConfig()), MockModelAdapter)
+    assert isinstance(
+        _build_model(AppConfig(generation=GenerationConfig(backend="mock"))),
+        MockModelAdapter,
+    )
     assert isinstance(
         _build_model(AppConfig(generation=GenerationConfig(backend="ace-step"))),
         AceStepAdapter,
