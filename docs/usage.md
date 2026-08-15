@@ -48,18 +48,35 @@ Press `h` to open the option guide. Press `Escape` or `h` to close it; selection
 
 ## Option Meanings
 
+### Focus
+
 ```text
 deep_work: sustained concentration and low distraction
 reading: spacious, calm, gentle pulse
 coding: forward momentum and a steady groove
 wind_down: soft, slow decompression
+```
+
+### Music presets
+
+```text
 classic_lofi: dusty keys, swung drums, round bass
 neo_soul: warm chords, pocketed rhythm, mellow bass
 ambient_tape: sparse pulse, wide pads, tape haze
 jazz_vinyl: brushed drums, jazz harmony, vinyl texture
+```
+
+### Energy
+
+```text
 low: soft movement and a restrained pulse
 steady: balanced movement for ordinary focus work
 high: more rhythmic momentum while remaining non-distracting
+```
+
+### Style
+
+```text
 lofi, neo_soul: warm, dusty, chord-forward texture
 ambient, tape: spacious, hazy, slowly moving texture
 rainy, mellow: soft atmosphere and subdued detail

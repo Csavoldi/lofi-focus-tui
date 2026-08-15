@@ -49,10 +49,14 @@ endpoint, commands run, generated output paths, and pass/fail notes.
    - Verify `request.focus == "coding"`, `request.preset == "ambient_tape"`, `plan.focus == "coding"`, and `plan.preset == "ambient_tape"`.
    - Verify the prompt includes concrete traits: consistent forward pulse, stable groove, no abrupt changes, sparse washed pad motif, minimal soft pulse, and long sustained low movement.
    - Verify the guide opens with `h`, closes with `Escape` or `h`, selection and session actions are suppressed while it is open, and q remains global quit.
-   ```text
-   fresh run closes with Escape
-   fresh run closes with h
-   ```
+   - Start a fresh run, open the guide with `h`, press `Escape`, and verify:
+     ```text
+     fresh run closes with Escape
+     ```
+   - Start another fresh run, open the guide with `h`, press `h`, and verify:
+     ```text
+     fresh run closes with h
+     ```
    - Start a session.
    - Pause, resume, stop, and refresh.
    - Confirm status, progress, playback mode, chunk status, and recent history are legible.
