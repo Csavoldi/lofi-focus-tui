@@ -14,6 +14,8 @@
 
 **Files:**
 - Modify: `tests/test_config.py`
+- Modify: `tests/test_backend_api.py`
+- Modify: `tests/test_backend_client.py`
 - Modify: `src/lofi_focus_tui/config.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -25,6 +27,8 @@
   `test_env_overrides_backend` so TOML selects `ace-step` while
   `LOFI_BACKEND=mock` wins. Add separate tests for an explicitly unset and an
   empty `LOFI_BACKEND`, both asserting that a TOML `ace-step` value is retained.
+  Update existing tests that intentionally exercise mock mode so they select
+  `mock` explicitly rather than relying on `AppConfig()` defaults.
 
 - [ ] **Step 2: Run the focused tests to verify the default test fails**
 
@@ -60,13 +64,16 @@
 **Files:**
 - Modify: `docs/configuration.md`
 - Modify: `docs/user-acceptance-testing.md`
+- Modify: `README.md`
+- Modify: `docs/usage.md`
+- Modify: `docs/ace-step.md`
 
 - [ ] **Step 1: Update the normal configuration example**
 
   Set the documented generation backend to `ace-step-http`, state that it is
   the default, and point users to the local REST endpoint at
   `http://127.0.0.1:8001`. Keep `mock` documented as an explicit development
-  fallback and leave the README mock section unchanged.
+  fallback and align all README and ACE-Step/usage guidance with that default.
 
 - [ ] **Step 2: Clarify the fresh-install UAT path**
 
@@ -78,10 +85,10 @@
 
 - [ ] **Step 3: Check documentation consistency**
 
-  Run: `rg -n 'backend = "mock"|backend = "ace-step-http"|127\.0\.0\.1:8001' docs/configuration.md docs/user-acceptance-testing.md README.md`
+  Run: `rg -n 'backend = "mock"|backend = "ace-step-http"|127\.0\.0\.1:8001' docs/configuration.md docs/user-acceptance-testing.md README.md docs/usage.md docs/ace-step.md`
 
   Expected: normal setup/configuration text uses `ace-step-http`; mock appears
-  only in the explicit developer/mock workflow guidance.
+  only in explicit developer/mock workflow guidance.
 
 - [ ] **Step 4: Commit the documentation**
 
@@ -112,7 +119,7 @@
   Run: `git status --short`
 
   Expected: the pre-existing `config.example.toml` modification and `.superpowers/`
-  directory remain present. Run `git diff --name-only HEAD~2..HEAD` after the
-  two implementation commits; expected output is only
-  `src/lofi_focus_tui/config.py`, `tests/test_config.py`,
-  `docs/configuration.md`, and `docs/user-acceptance-testing.md`.
+  directory remain present. Run `git diff --name-only de27d35..HEAD` after the
+  implementation commits; expected output contains only the intended source,
+  test, and documentation files listed in Chunks 1 and 2, and does not contain
+  `config.example.toml` or `.superpowers/`.
