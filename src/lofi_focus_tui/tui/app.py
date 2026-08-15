@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from lofi_focus_tui.domain import BackendState, BackendStatus, EnergyLevel, SessionRequest
 from lofi_focus_tui.options import ENERGY_OPTIONS, FOCUS_OPTIONS, PRESET_OPTIONS, STYLE_OPTIONS
@@ -28,6 +28,27 @@ class OptionGuideScreen(ModalScreen[None]):
         yield Static(render_option_guide(), id="option-guide")
 
 
+class ExportScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Cancel export"),
+        ("q", "app.quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Static("export directory:", id="export-prompt")
+        yield Input(value="~/Music/lofi-focus-tui", id="export-directory")
+        yield Static("", id="export-error")
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        try:
+            response = await self.app.backend_client.export_session(event.value)
+        except Exception as exc:
+            self.query_one("#export-error", Static).update(str(exc))
+            return
+        self.app.notify(response.message)
+        self.app.pop_screen()
+
+
 class LofiFocusApp(App[None]):
     BINDINGS = [
         ("s", "start_session", "Start"),
@@ -39,6 +60,12 @@ class LofiFocusApp(App[None]):
         ("2", "cycle_duration", "Duration"),
         ("3", "cycle_energy", "Energy"),
         ("4", "cycle_style_tags", "Style"),
+        ("left_square_bracket", "volume_down", "Volume down"),
+        ("right_square_bracket", "volume_up", "Volume up"),
+        ("comma", "rewind", "Rewind"),
+        ("full_stop", "forward", "Forward"),
+        ("0", "restart", "Restart"),
+        ("e", "show_export", "Export"),
         ("h", "show_guide", "Guide"),
         ("q", "quit", "Quit"),
     ]
@@ -114,6 +141,26 @@ class LofiFocusApp(App[None]):
         self.status = await self.backend_client.stop_session()
         self._refresh_display()
 
+    async def action_volume_down(self) -> None:
+        self.status = await self.backend_client.adjust_volume(-0.1)
+        self._refresh_display()
+
+    async def action_volume_up(self) -> None:
+        self.status = await self.backend_client.adjust_volume(0.1)
+        self._refresh_display()
+
+    async def action_rewind(self) -> None:
+        self.status = await self.backend_client.seek(-10.0)
+        self._refresh_display()
+
+    async def action_forward(self) -> None:
+        self.status = await self.backend_client.seek(10.0)
+        self._refresh_display()
+
+    async def action_restart(self) -> None:
+        self.status = await self.backend_client.restart()
+        self._refresh_display()
+
     async def action_refresh_status(self) -> None:
         await self.refresh_status()
 
@@ -139,6 +186,9 @@ class LofiFocusApp(App[None]):
 
     def action_show_guide(self) -> None:
         self.push_screen(OptionGuideScreen())
+
+    def action_show_export(self) -> None:
+        self.push_screen(ExportScreen())
 
     def _refresh_display(self) -> None:
         self.query_one("#status", Static).update(render_status(self.status))

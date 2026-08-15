@@ -1,7 +1,7 @@
 from httpx import AsyncBaseTransport, AsyncClient, HTTPError
 
 from lofi_focus_tui.config import ServerConfig, load_config
-from lofi_focus_tui.domain import BackendStatus, SessionRequest
+from lofi_focus_tui.domain import BackendStatus, ExportResponse, SessionRequest
 
 
 class BackendClient:
@@ -55,10 +55,32 @@ class BackendClient:
     async def stop_session(self) -> BackendStatus:
         return await self._post_status("/sessions/stop")
 
-    async def _post_status(self, path: str) -> BackendStatus:
+    async def adjust_volume(self, delta: float) -> BackendStatus:
+        return await self._post_status("/sessions/volume", {"delta": delta})
+
+    async def seek(self, seconds: float) -> BackendStatus:
+        return await self._post_status("/sessions/seek", {"seconds": seconds})
+
+    async def restart(self) -> BackendStatus:
+        return await self._post_status("/sessions/restart")
+
+    async def export_session(self, directory: str) -> ExportResponse:
         try:
             async with AsyncClient(transport=self.transport, base_url=self.base_url) as client:
-                response = await client.post(path)
+                response = await client.post("/sessions/export", json={"directory": directory})
+                response.raise_for_status()
+        except HTTPError as exc:
+            try:
+                detail = response.json().get("detail", "backend unavailable")
+            except (UnboundLocalError, ValueError):
+                detail = "backend unavailable"
+            raise RuntimeError(detail) from exc
+        return ExportResponse.model_validate(response.json())
+
+    async def _post_status(self, path: str, payload: dict | None = None) -> BackendStatus:
+        try:
+            async with AsyncClient(transport=self.transport, base_url=self.base_url) as client:
+                response = await client.post(path, json=payload)
                 response.raise_for_status()
         except HTTPError:
             return BackendStatus(

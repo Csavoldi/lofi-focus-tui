@@ -22,6 +22,8 @@ def render_status(status: BackendStatus) -> str:
         f"state: {_enum_value(status.state)}\n"
         f"backend: {status.backend}  device: {status.device}\n"
         f"playback: {status.playback}\n"
+        f"volume: {round(status.volume * 100)}%\n"
+        f"position: {status.position_seconds:.1f}s / {status.duration_seconds:.1f}s\n"
         f"progress: {progress}%\n"
         f"message: {status.message}"
         f"{chunk_line}"
@@ -63,7 +65,10 @@ def render_option_guide() -> str:
 
 def render_controls(status: BackendStatus) -> str:
     pause_label = "resume" if _enum_value(status.state) == "paused" else "pause"
-    return f"s start  space {pause_label}  x stop  r refresh"
+    return (
+        f"s start  space {pause_label}  x stop  r refresh  [ ] volume  "
+        ", . seek  0 restart  e export"
+    )
 
 
 def render_history(status: BackendStatus) -> str:

@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from lofi_focus_tui.domain import BackendStatus
+from lofi_focus_tui.domain import BackendStatus, ExportResponse
 from lofi_focus_tui.options import (
     ENERGY_OPTIONS,
     FOCUS_OPTIONS,
@@ -33,6 +33,11 @@ class FakeBackendClient:
         self.paused = False
         self.resumed = False
         self.stopped = False
+        self.volume_deltas = []
+        self.seek_seconds = []
+        self.restarted = False
+        self.exported_directories = []
+        self.export_error = None
         self.status_calls = 0
         self.requests = []
         self.statuses = [
@@ -68,6 +73,28 @@ class FakeBackendClient:
     async def stop_session(self) -> BackendStatus:
         self.stopped = True
         return BackendStatus(state="idle", message="stopped", backend="mock", device="cpu")
+
+    async def adjust_volume(self, delta: float) -> BackendStatus:
+        self.volume_deltas.append(delta)
+        return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
+
+    async def seek(self, seconds: float) -> BackendStatus:
+        self.seek_seconds.append(seconds)
+        return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
+
+    async def restart(self) -> BackendStatus:
+        self.restarted = True
+        return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
+
+    async def export_session(self, directory: str) -> ExportResponse:
+        self.exported_directories.append(directory)
+        if self.export_error:
+            raise RuntimeError(self.export_error)
+        return ExportResponse(
+            message="session exported",
+            audio_path=f"{directory}/audio.wav",
+            metadata_path=f"{directory}/metadata.json",
+        )
 
 
 @pytest.mark.asyncio
@@ -175,7 +202,10 @@ async def test_tui_renders_string_values_after_legacy_enum_cycles(monkeypatch):
 def test_tui_registers_main_and_help_bindings():
     keys = {binding[0] for binding in LofiFocusApp.BINDINGS}
 
-    assert keys == {"1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h"}
+    assert keys == {
+        "1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h",
+        "left_square_bracket", "right_square_bracket", "comma", "full_stop", "0", "e",
+    }
 
 
 def test_tui_uses_shared_option_catalogs_without_duplicate_lists():
@@ -207,6 +237,50 @@ async def test_tui_pause_resume_and_stop_actions_call_backend():
     assert backend_client.resumed is True
     assert backend_client.stopped is True
     assert "state: idle" in str(text)
+
+
+@pytest.mark.asyncio
+async def test_tui_playback_keys_call_backend_controls():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        pilot.app.status = BackendStatus(
+            state="playing", message="playing", backend="mock", device="cpu"
+        )
+        await pilot.press("]", "[", ".", ",", "0")
+
+    assert backend_client.volume_deltas == [0.1, -0.1]
+    assert backend_client.seek_seconds == [10.0, -10.0]
+    assert backend_client.restarted is True
+
+
+@pytest.mark.asyncio
+async def test_tui_export_modal_submits_default_directory():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("e")
+        assert pilot.app.screen is not pilot.app.default_screen
+        await pilot.press("enter")
+
+    assert backend_client.exported_directories == ["~/Music/lofi-focus-tui"]
+
+
+@pytest.mark.asyncio
+async def test_tui_export_modal_keeps_open_on_error_and_closes_on_escape():
+    backend_client = FakeBackendClient()
+    backend_client.export_error = "permission denied"
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("e")
+        await pilot.press("enter")
+        assert pilot.app.screen is not pilot.app.default_screen
+        assert "permission denied" in str(pilot.app.screen.query_one("#export-error").render())
+        await pilot.press("escape")
+        assert pilot.app.screen is pilot.app.default_screen
 
 
 @pytest.mark.asyncio
