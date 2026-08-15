@@ -20,18 +20,35 @@ class Player(Protocol):
     def stop(self) -> None:
         ...
 
+    def set_volume(self, volume: float) -> None:
+        ...
+
+    def seek(self, seconds: float) -> bool:
+        ...
+
+    def restart(self) -> bool:
+        ...
+
+    def position_seconds(self) -> float:
+        ...
+
+    def duration_seconds(self) -> float:
+        ...
+
 
 class NullPlayer:
     def __init__(self) -> None:
         self.audio: np.ndarray | None = None
         self.sample_rate: int | None = None
         self.volume = 1.0
+        self._frame = 0
         self.state = "stopped"
 
     def play(self, audio: np.ndarray, sample_rate: int, volume: float = 1.0) -> None:
         self.audio = np.array(audio, copy=True)
         self.sample_rate = sample_rate
-        self.volume = volume
+        self.volume = max(0.0, min(1.0, float(volume)))
+        self._frame = 0
         self.state = "playing"
 
     def pause(self) -> bool:
@@ -45,22 +62,50 @@ class NullPlayer:
     def stop(self) -> None:
         self.state = "stopped"
 
+    def set_volume(self, volume: float) -> None:
+        self.volume = max(0.0, min(1.0, float(volume)))
+
+    def seek(self, seconds: float) -> bool:
+        if self.audio is None or self.sample_rate is None:
+            return False
+        self._frame = max(
+            0,
+            min(len(self.audio), self._frame + int(seconds * self.sample_rate)),
+        )
+        return True
+
+    def restart(self) -> bool:
+        if self.audio is None:
+            return False
+        self._frame = 0
+        self.state = "playing"
+        return True
+
+    def position_seconds(self) -> float:
+        if self.sample_rate is None:
+            return 0.0
+        return self._frame / self.sample_rate
+
+    def duration_seconds(self) -> float:
+        if self.audio is None or self.sample_rate is None:
+            return 0.0
+        return len(self.audio) / self.sample_rate
+
 
 class SoundDevicePlayer:
     def __init__(self) -> None:
         self._audio: np.ndarray | None = None
         self._sample_rate: int | None = None
         self._frame = 0
+        self._volume = 1.0
         self._stream = None
         self.state = "stopped"
 
     def play(self, audio: np.ndarray, sample_rate: int, volume: float = 1.0) -> None:
         self.stop()
-        output = self._prepare_audio(audio)
-        if volume != 1.0:
-            output = np.ascontiguousarray(output * np.float32(volume), dtype=np.float32)
-        self._audio = output
+        self._audio = self._prepare_audio(audio)
         self._sample_rate = sample_rate
+        self._volume = max(0.0, min(1.0, float(volume)))
         self._frame = 0
         self._start_stream()
 
@@ -82,7 +127,42 @@ class SoundDevicePlayer:
         self._audio = None
         self._sample_rate = None
         self._frame = 0
+        self._volume = 1.0
         self.state = "stopped"
+
+    def set_volume(self, volume: float) -> None:
+        self._volume = max(0.0, min(1.0, float(volume)))
+
+    def seek(self, seconds: float) -> bool:
+        if self._audio is None or self._sample_rate is None:
+            return False
+        self._frame = max(
+            0,
+            min(len(self._audio), self._frame + int(seconds * self._sample_rate)),
+        )
+        if self.state == "playing":
+            self._start_stream()
+        return True
+
+    def restart(self) -> bool:
+        if self._audio is None or self._sample_rate is None:
+            return False
+        self._frame = 0
+        if self.state == "playing":
+            self._start_stream()
+        else:
+            self.state = "paused"
+        return True
+
+    def position_seconds(self) -> float:
+        if self._sample_rate is None:
+            return 0.0
+        return self._frame / self._sample_rate
+
+    def duration_seconds(self) -> float:
+        if self._audio is None or self._sample_rate is None:
+            return 0.0
+        return len(self._audio) / self._sample_rate
 
     @staticmethod
     def available() -> bool:
@@ -127,7 +207,7 @@ class SoundDevicePlayer:
         start = self._frame
         stop = min(start + frames, len(self._audio))
         chunk = self._audio[start:stop]
-        outdata[: len(chunk)] = chunk
+        outdata[: len(chunk)] = chunk * np.float32(self._volume)
         if len(chunk) < frames:
             outdata[len(chunk) :] = 0
         self._frame = stop

@@ -11,7 +11,7 @@ class PlaybackManager:
         fade_seconds: float = 0.0,
     ) -> None:
         self.player = player or NullPlayer()
-        self.volume = volume
+        self.volume = max(0.0, min(1.0, float(volume)))
         self.fade_seconds = fade_seconds
         self.current: GenerationResult | None = None
         self.paused = False
@@ -60,3 +60,28 @@ class PlaybackManager:
         self.current = None
         self.paused = False
         self.player.stop()
+
+    def adjust_volume(self, delta: float) -> bool:
+        if self.current is None:
+            return False
+        self.volume = max(0.0, min(1.0, self.volume + delta))
+        self.player.set_volume(self.volume)
+        return True
+
+    def seek(self, seconds: float) -> bool:
+        if self.current is None:
+            return False
+        return self.player.seek(seconds)
+
+    def restart(self) -> bool:
+        if self.current is None:
+            return False
+        return self.player.restart()
+
+    @property
+    def position_seconds(self) -> float:
+        return self.player.position_seconds() if self.current is not None else 0.0
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.player.duration_seconds() if self.current is not None else 0.0
