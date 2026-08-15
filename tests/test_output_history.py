@@ -181,3 +181,101 @@ def test_history_preserves_tags_on_already_normalized_rows(tmp_path):
         "ambient_tape",
         ["keep", "legacy_preset:historic"],
     )
+
+
+def test_history_migrates_null_focus_like_omitted_focus(tmp_path):
+    path = tmp_path / "history.jsonl"
+    rows = [
+        {
+            "session_id": "null-legacy",
+            "focus": None,
+            "preset": "reading",
+            "created_at": "2026-08-14T12:00:00+00:00",
+            "duration_seconds": 30,
+            "audio_path": "null-legacy.wav",
+            "metadata_path": "null-legacy.json",
+            "seed": 1,
+            "tags": [],
+        },
+        {
+            "session_id": "null-music",
+            "focus": None,
+            "preset": "neo_soul",
+            "created_at": "2026-08-14T12:01:00+00:00",
+            "duration_seconds": 30,
+            "audio_path": "null-music.wav",
+            "metadata_path": "null-music.json",
+            "seed": 2,
+            "tags": [],
+        },
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    records = {record.session_id: record for record in HistoryStore(path).list()}
+
+    assert (records["null-legacy"].focus, records["null-legacy"].preset) == (
+        "reading",
+        "classic_lofi",
+    )
+    assert (records["null-music"].focus, records["null-music"].preset) == (
+        "deep_work",
+        "neo_soul",
+    )
+
+
+def test_history_migrates_unknown_rows_with_malformed_tags(tmp_path):
+    path = tmp_path / "history.jsonl"
+    rows = [
+        {
+            "session_id": "unknown-null-tags",
+            "preset": "future_null",
+            "created_at": "2026-08-14T12:00:00+00:00",
+            "duration_seconds": 30,
+            "audio_path": "unknown-null-tags.wav",
+            "metadata_path": "unknown-null-tags.json",
+            "seed": 1,
+            "tags": None,
+        },
+        {
+            "session_id": "unknown-string-tags",
+            "preset": "future-string",
+            "created_at": "2026-08-14T12:01:00+00:00",
+            "duration_seconds": 30,
+            "audio_path": "unknown-string-tags.wav",
+            "metadata_path": "unknown-string-tags.json",
+            "seed": 2,
+            "tags": "not-a-list",
+        },
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    store = HistoryStore(path)
+
+    records = {record.session_id: record for record in store.list()}
+
+    assert records["unknown-null-tags"].tags == ["legacy_preset:future_null"]
+    assert records["unknown-string-tags"].tags == ["legacy_preset:future-string"]
+    assert store.mark_favorite("unknown-null-tags") is True
+    assert store.mark_favorite("unknown-string-tags") is True
+
+
+def test_history_preserves_extra_fields_on_normal_rewrite(tmp_path):
+    path = tmp_path / "history.jsonl"
+    row = {
+        "session_id": "with-extra",
+        "focus": "reading",
+        "preset": "ambient_tape",
+        "created_at": "2026-08-14T13:00:00+00:00",
+        "duration_seconds": 30,
+        "audio_path": "with-extra.wav",
+        "metadata_path": "with-extra.json",
+        "seed": 1,
+        "tags": [],
+        "extra_field": {"source": "legacy"},
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    store = HistoryStore(path)
+
+    assert store.mark_favorite("with-extra") is True
+
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted["extra_field"] == {"source": "legacy"}

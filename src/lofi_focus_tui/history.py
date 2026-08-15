@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lofi_focus_tui.options import LEGACY_FOCUS_VALUES, PRESET_OPTIONS, MusicPresetValue
 
 
 class SessionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     session_id: str
     preset: str
     focus: str = "deep_work"
@@ -23,7 +25,7 @@ class SessionRecord(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_preset(cls, values):
-        if not isinstance(values, dict) or "focus" in values:
+        if not isinstance(values, dict) or values.get("focus") is not None:
             return values
 
         values = dict(values)
@@ -37,7 +39,8 @@ class SessionRecord(BaseModel):
             values["focus"] = "deep_work"
             values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
             legacy_tag = f"legacy_preset:{preset}"
-            tags = list(values.get("tags", []))
+            tags = values.get("tags")
+            tags = list(tags) if isinstance(tags, list) else []
             if legacy_tag not in tags:
                 tags.append(legacy_tag)
             values["tags"] = tags
