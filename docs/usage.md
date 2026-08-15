@@ -17,7 +17,7 @@ python -m pip install -e ".[playback]"
 Start the backend:
 
 ```bash
-lofi-backend
+LOFI_BACKEND=mock lofi-backend
 ```
 
 Start the TUI in a second terminal:
