@@ -7,6 +7,7 @@ except ImportError:  # pragma: no cover - compatibility for Python 3.10
         pass
 
 from typing import Literal
+from unicodedata import normalize
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -45,6 +46,8 @@ class SessionRequest(BaseModel):
     device_preference: str = "auto"
     generation: GenerationSettings | None = None
     seed: int | None = Field(default=None, ge=0)
+    prompt: str = ""
+    vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
 
     @model_validator(mode="before")
     @classmethod
@@ -82,6 +85,23 @@ class SessionRequest(BaseModel):
             raise ValueError(f"Unknown music preset: {value}")
         return value
 
+    @field_validator("prompt", mode="before")
+    @classmethod
+    def normalize_prompt(cls, value):
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        if len(normalize("NFC", value)) > 512:
+            raise ValueError("Prompt must be 512 characters or fewer")
+        return value
+
+    @field_validator("vocal_mode", mode="before")
+    @classmethod
+    def normalize_vocal_mode(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip().lower()
+
 
 class VolumeAdjustment(BaseModel):
     delta: float = Field(ge=-1.0, le=1.0)
@@ -115,6 +135,15 @@ class SessionPlan(BaseModel):
     avoid_traits: list[str]
     focus_constraints: list[str]
     continuity_requirements: list[str]
+    prompt: str = ""
+    vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
+
+    @field_validator("vocal_mode", mode="before")
+    @classmethod
+    def normalize_vocal_mode(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip().lower()
 
 
 class CompositionBlueprint(BaseModel):
@@ -133,6 +162,16 @@ class CompositionBlueprint(BaseModel):
     arrangement_sections: list[str]
     boundary_constraints: list[str]
     continuation_constraints: list[str] = Field(default_factory=list)
+    prompt: str = ""
+    vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
+    energy: EnergyLevel = EnergyLevel.STEADY
+
+    @field_validator("vocal_mode", mode="before")
+    @classmethod
+    def normalize_vocal_mode(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip().lower()
 
 
 class BackendStatus(BaseModel):
