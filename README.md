@@ -79,6 +79,50 @@ lofi
 The TUI is ready when it shows `backend: ace-step-http` and `message: ready`. Press `s`
 to start a session. The first generation can take a few minutes.
 
+### Use ACE-Step on another machine on your LAN
+
+The TUI talks to the Lofi backend on port `8765`; the backend talks to ACE-Step on port
+`8001`. If ACE-Step is hosted on another LAN machine, keep the Lofi backend and TUI local
+and point the backend at the ACE-Step machine's LAN IP.
+
+On the ACE-Step machine, bind the REST API to the LAN interface:
+
+```bash
+cd ~/Documents/ACE-Step-1.5
+ACESTEP_API_HOST=0.0.0.0 ACESTEP_API_PORT=8001 uv run acestep-api
+```
+
+Allow inbound TCP port `8001` through that machine's firewall, preferably only from the
+machine running `lofi-backend`. Do not expose the API directly to the public internet.
+
+On the Lofi machine, create `config.toml` in the repository directory (or at
+`~/.config/lofi-focus-tui/config.toml`):
+
+```toml
+[generation]
+backend = "ace-step-http"
+
+[ace_step_http]
+base_url = "http://ACE_STEP_LAN_IP:8001"
+api_key = ""
+timeout_seconds = 1800.0
+```
+
+Replace `ACE_STEP_LAN_IP` with the AceStep machine's address, such as `192.168.2.109`.
+If the AceStep server uses an API key, set the same key in `api_key`. `LOFI_BACKEND=ace-step-http`
+can override the backend setting, but the URL is read from `config.toml`.
+
+Test connectivity from the Lofi machine:
+
+```bash
+curl http://ACE_STEP_LAN_IP:8001/health
+curl http://ACE_STEP_LAN_IP:8001/v1/models
+```
+
+Leave `[server] host = "127.0.0.1"` when the TUI and Lofi backend run on the same machine.
+If the TUI itself runs on a different machine, configure its `[server] host` as the Lofi
+backend machine's LAN IP and bind that backend to a LAN-reachable host as well.
+
 ### TUI controls
 
 ```text
