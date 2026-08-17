@@ -44,9 +44,12 @@ itself is a separate concern and is not part of this work.
 
 ## Runtime flow
 
-1. `lofi_focus_tui.cli.main()` loads the application config.
-2. A runtime builder creates the configured model adapter and `SessionManager`.
-3. `LofiFocusApp(session_manager=manager)` starts the Textual application.
+1. `lofi_focus_tui.cli.main()` loads the application config exactly once.
+2. A runtime builder creates the configured model adapter and `SessionManager` from that
+   config.
+3. `LofiFocusApp(session_manager=manager, config=config)` starts the Textual application.
+   The TUI reuses this config for theme and display settings instead of loading a second
+   copy from disk.
 4. On mount and on its existing refresh interval, the TUI reads `manager.health()`.
 5. Start, pause, resume, stop, volume, seek, restart, and export actions call the
    corresponding manager methods directly.
@@ -54,6 +57,12 @@ itself is a separate concern and is not part of this work.
    immediately returns a generating status.
 7. Existing status, playback, output, history, prompt, and vocal-mode behavior remains
    unchanged.
+
+When the app unmounts or quits, it calls an idempotent manager shutdown method. Shutdown
+requests cancellation through the existing task mechanism, stops playback, and shuts down
+the manager's executor without leaving a worker-owned resource behind. A quit-during-
+generation test must verify that the application exits cleanly and does not leave active
+playback or an unclosed executor.
 
 ## Code changes
 
@@ -73,6 +82,9 @@ builder that can be used by the CLI and tests without importing FastAPI or start
 server. The builder will preserve the current backend selection and configuration
 behavior for mock, embedded ACE-Step, ACE-Step HTTP, and RunPod adapters.
 
+`AppConfig` is the single startup configuration object. It is passed to both the runtime
+builder and `LofiFocusApp`; neither layer reloads the config file.
+
 ### Remove the Lofi HTTP boundary
 
 Remove the Lofi FastAPI application and HTTP client path from the normal package:
@@ -80,7 +92,9 @@ Remove the Lofi FastAPI application and HTTP client path from the normal package
 - remove the `lofi-backend` console script;
 - remove `backend/api.py` once its construction helpers are moved;
 - remove `tui/backend_client.py`;
-- remove FastAPI, HTTPX, and Uvicorn runtime dependencies if no remaining code uses them;
+- remove FastAPI and Uvicorn runtime dependencies;
+- retain HTTPX because the ACE-Step HTTP adapter still uses it for the external model
+  service;
 - remove API/client tests and replace them with direct manager/TUI integration coverage.
 
 The `backend` package name may remain for the internal session manager to avoid an
@@ -107,7 +121,12 @@ LOFI_BACKEND=mock lofi
 ```
 
 For real HTTP generation, users still start the separate ACE-Step-1.5 service, then run
-only `lofi` for the Lofi application.
+only `lofi` for the Lofi application. The installed commands are `lofi` and
+`lofi-doctor`; `lofi-backend` is removed.
+
+Update `config.example.toml` so it no longer documents the removed Lofi `[server]` section.
+Legacy TOML files that still contain `[server]` must remain loadable, but the active config
+model must not use those values.
 
 ## Error behavior
 
@@ -125,12 +144,16 @@ only `lofi` for the Lofi application.
 Add or update tests to prove:
 
 - the runtime builder selects the same model adapters and settings as before;
+- one shared `AppConfig` reaches runtime construction and TUI theme/display setup;
 - `LofiFocusApp` calls a supplied manager directly for status and controls;
 - generation remains asynchronous through the manager's worker;
+- quitting during generation shuts down the manager and playback cleanly;
 - prompt and vocal-mode fields reach the manager unchanged;
 - export success and failure behavior remains intact;
-- the CLI exposes only the `lofi` application command;
+- the package exposes `lofi` and `lofi-doctor`, but no `lofi-backend` command;
 - diagnostics no longer depends on port `8765`;
+- a legacy TOML file containing `[server]` still loads while no active server config is used;
+- `httpx` remains installed for ACE-Step HTTP mode;
 - the full existing suite and Ruff checks pass.
 
 The primary manual smoke test becomes one process in mock mode:
