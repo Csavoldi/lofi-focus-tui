@@ -332,6 +332,7 @@ class SessionManager:
                     chunk_index,
                     chunk_count,
                     continuation_constraints=handoff,
+                    base_blueprint=blueprint,
                 )
             )
             result = self._generate_chunk(

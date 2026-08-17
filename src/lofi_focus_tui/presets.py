@@ -8,7 +8,16 @@ from lofi_focus_tui.options import FOCUS_OPTIONS
 def expand_preset(request: SessionRequest) -> SessionPlan:
     tempo_range = (72, 88) if request.energy != EnergyLevel.HIGH else (82, 96)
     avoid_traits = [tag.replace("_", " ") for tag in request.avoid_tags]
-    avoid_traits.extend(["vocals", "sharp transients", "sudden drops"])
+    legacy_vocal_tags = {"vocals", "no vocals"}
+    avoid_traits = [
+        tag
+        for tag in avoid_traits
+        if tag.replace("_", " ").strip().lower() not in legacy_vocal_tags
+        or request.vocal_mode == "instrumental"
+    ]
+    if request.vocal_mode == "instrumental":
+        avoid_traits.append("vocals")
+    avoid_traits.extend(["sharp transients", "sudden drops"])
     seed = request.seed
     if seed is None:
         payload = "|".join([request.preset, str(request.duration_minutes), *request.style_tags])
@@ -33,4 +42,6 @@ def expand_preset(request: SessionRequest) -> SessionPlan:
             "shared motif",
             "no abrupt section jumps",
         ],
+        prompt=request.prompt,
+        vocal_mode=request.vocal_mode,
     )

@@ -5,6 +5,7 @@ from pathlib import Path
 from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.base import GenerationResult
+from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 
@@ -66,12 +67,13 @@ class AceStepAdapter:
         settings = settings or GenerationSettings(seed=blueprint.seed)
         seed = settings.seed if settings.seed >= 0 else blueprint.seed
         save_path = self.output_dir / f"{blueprint.session_id}.{settings.output_format}"
-        prompt = _blueprint_to_prompt(blueprint)
+        prompt = compose_local_prompt(blueprint)
+        lyrics = "[Instrumental]" if blueprint.vocal_mode == "instrumental" else ""
 
         pipeline(
             audio_duration=duration_seconds,
             prompt=prompt,
-            lyrics="",
+            lyrics=lyrics,
             infer_step=settings.inference_steps,
             guidance_scale=settings.guidance_scale,
             scheduler_type=settings.scheduler_type,
@@ -106,23 +108,7 @@ class AceStepAdapter:
 
 
 def _blueprint_to_prompt(blueprint: CompositionBlueprint) -> str:
-    parts = [
-        "instrumental focus music",
-        f"focus: {blueprint.focus}",
-        f"{blueprint.tempo_bpm} bpm",
-        blueprint.key_center,
-        f"focus constraints: {', '.join(blueprint.focus_constraints)}",
-        f"arrangement sections: {', '.join(blueprint.arrangement_sections)}",
-        blueprint.motif,
-        blueprint.drum_feel,
-        blueprint.bass_behavior,
-        ", ".join(blueprint.texture_layers),
-        ", ".join(blueprint.boundary_constraints),
-        ", ".join(blueprint.continuation_constraints),
-        "continuous coherent arrangement",
-        "no vocals",
-    ]
-    return ", ".join(part for part in parts if part)
+    return compose_local_prompt(blueprint)
 
 
 def _default_output_dir() -> Path:

@@ -9,6 +9,7 @@ from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter, _blueprint_to_prompt
+from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
@@ -61,7 +62,27 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     assert result.duration_seconds == 2
     assert result.audio.shape[0] == 88200
     assert fake_pipeline.calls[0]["audio_duration"] == 2
+    assert fake_pipeline.calls[0]["lyrics"] == "[Instrumental]"
     assert str(blueprint.tempo_bpm) in fake_pipeline.calls[0]["prompt"]
+
+
+def test_ace_step_adapter_sends_empty_lyrics_for_vocal_mode(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            vocal_mode="vocals",
+        )
+    )
+
+    adapter.generate(create_blueprint(plan), duration_seconds=1)
+
+    assert fake_pipeline.calls[0]["lyrics"] == ""
+    assert "thinking" not in fake_pipeline.calls[0]
 
 
 def test_blueprint_prompt_includes_focus_recipes_and_boundaries():
@@ -82,6 +103,7 @@ def test_blueprint_prompt_includes_focus_recipes_and_boundaries():
     assert ", ".join(blueprint.focus_constraints) in prompt
     assert ", ".join(blueprint.arrangement_sections) in prompt
     assert all(constraint in prompt for constraint in blueprint.boundary_constraints)
+    assert prompt == compose_local_prompt(blueprint)
 
 
 def test_chunk_blueprint_prompt_includes_focus_recipes_and_boundaries(tmp_path):

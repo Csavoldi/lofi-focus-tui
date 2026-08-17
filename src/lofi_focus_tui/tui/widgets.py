@@ -13,6 +13,13 @@ def parse_style_tags(style_tags: str) -> list[str]:
     return [tag.strip() for tag in style_tags.split(",") if tag.strip()]
 
 
+def prompt_summary(prompt: str) -> str:
+    prompt = prompt.strip()
+    if not prompt:
+        return "(category-generated)"
+    return prompt if len(prompt) <= 80 else f"{prompt[:77]}..."
+
+
 def render_status(status: BackendStatus) -> str:
     progress = round(status.progress * 100)
     chunk_line = ""
@@ -36,13 +43,17 @@ def render_session(
     duration_minutes: int,
     energy: EnergyLevel,
     style_tags: str,
+    prompt: str = "",
+    vocal_mode: str = "instrumental",
 ) -> str:
     return (
         f"focus: {_enum_value(focus)} — {FOCUS_OPTIONS[focus].description}\n"
         f"preset: {_enum_value(preset)} — {PRESET_OPTIONS[preset].description}\n"
         f"duration: {duration_minutes} minutes\n"
         f"energy: {_enum_value(energy)} — {ENERGY_OPTIONS[energy].description}\n"
-        f"style: {_enum_value(style_tags)} — {STYLE_OPTIONS[style_tags].description}"
+        f"style: {_enum_value(style_tags)} — {STYLE_OPTIONS[style_tags].description}\n"
+        f"prompt: {prompt_summary(prompt)}\n"
+        f"mode: {_enum_value(vocal_mode)}"
     )
 
 

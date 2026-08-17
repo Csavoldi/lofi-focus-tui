@@ -11,6 +11,8 @@ from lofi_focus_tui.composition import create_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.base import GenerationCancelledError
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter, TaskResult
+from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
@@ -103,9 +105,31 @@ def test_task_result_parses_ace_step_15_running_status():
 
 def test_http_adapter_generates_audio_from_remote_task():
     requests = []
+    blueprint = make_blueprint().model_copy(update={"prompt": "late-night rainy room"})
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.method == "POST" and request.url.path == "/format_input":
+            assert request.headers["authorization"] == "Bearer secret"
+            assert request.extensions["timeout"] == {
+                "connect": 30.0,
+                "read": 30.0,
+                "write": 30.0,
+                "pool": 30.0,
+            }
+            assert json.loads(request.content) == {
+                "prompt": local_prompt,
+                "lyrics": "[Instrumental]",
+                "temperature": 0.85,
+                "param_obj": (
+                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"minor pentatonic",'
+                    '"language":"unknown","time_signature":"4"}'
+                ),
+            }
+            return httpx.Response(
+                200,
+                json={"data": {"caption": "formatted rainy room"}},
+            )
         if request.method == "POST" and request.url.path == "/release_task":
             payload = json.loads(request.content)
             assert set(payload) == {
@@ -126,11 +150,9 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["batch_size"] == 1
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
-            assert "instrumental focus music" in payload["prompt"]
-            assert "focus: deep_work" in payload["prompt"]
-            assert "minimal variation" in payload["prompt"]
-            assert "arrangement sections: warmup, steady_work, cooldown" in payload["prompt"]
-            assert "match the previous chunk's loudness" in payload["prompt"]
+            assert payload["prompt"] == "late-night rainy room. formatted rainy room"
+            assert payload["lyrics"] == "[Instrumental]"
+            assert payload["thinking"] is False
             assert request.headers["authorization"] == "Bearer secret"
             return httpx.Response(200, json={"task_id": "task-1"})
         if request.method == "POST" and request.url.path == "/query_result":
@@ -169,9 +191,10 @@ def test_http_adapter_generates_audio_from_remote_task():
     )
     settings = GenerationSettings(inference_steps=12, seed=456)
 
-    blueprint = make_blueprint().model_copy(
+    blueprint = blueprint.model_copy(
         update={"continuation_constraints": ["match the previous chunk's loudness"]}
     )
+    local_prompt = compose_local_prompt(blueprint)
     result = adapter.generate(blueprint, duration_seconds=10, settings=settings)
 
     assert result.sample_rate == 22050
@@ -181,6 +204,7 @@ def test_http_adapter_generates_audio_from_remote_task():
     assert result.metadata["task_id"] == "task-1"
     assert result.metadata["path"] == "rendered.wav"
     assert [request.url.path for request in requests] == [
+        "/format_input",
         "/release_task",
         "/query_result",
         "/v1/audio",
@@ -188,10 +212,12 @@ def test_http_adapter_generates_audio_from_remote_task():
 
 
 def test_http_adapter_omits_seed_only_for_random_seed_payload():
-    payloads = []
+    payloads = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        payloads.append(json.loads(request.content))
+        payloads[request.url.path] = json.loads(request.content)
+        if request.url.path == "/format_input":
+            return httpx.Response(200, json={"data": {"caption": "caption"}})
         return httpx.Response(200, json={"task_id": "task-1"})
 
     adapter = AceStepHttpAdapter(
@@ -203,7 +229,7 @@ def test_http_adapter_omits_seed_only_for_random_seed_payload():
 
     adapter.submit_task(blueprint, duration_seconds=10, settings=settings)
 
-    assert set(payloads[0]) == {
+    assert set(payloads["/release_task"]) == {
         "audio_duration",
         "prompt",
         "lyrics",
@@ -214,7 +240,201 @@ def test_http_adapter_omits_seed_only_for_random_seed_payload():
         "batch_size",
         "use_random_seed",
     }
-    assert payloads[0]["use_random_seed"] is True
+    assert payloads["/release_task"]["use_random_seed"] is True
+
+
+def _generate_with_format_response(format_response, blueprint=None):
+    requests = []
+    blueprint = blueprint or make_blueprint()
+    local_prompt = compose_local_prompt(blueprint)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/format_input":
+            if isinstance(format_response, BaseException):
+                raise format_response
+            if isinstance(format_response, httpx.Response):
+                return format_response
+            return httpx.Response(200, json=format_response)
+        if request.url.path == "/release_task":
+            assert json.loads(request.content)["prompt"] == local_prompt
+            return httpx.Response(200, json={"task_id": "task-1"})
+        if request.url.path == "/query_result":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "task_id": "task-1",
+                            "status": 1,
+                            "result": json.dumps({"audio_path": "rendered.wav"}),
+                        }
+                    ]
+                },
+            )
+        if request.url.path == "/v1/audio":
+            return httpx.Response(200, content=make_wav_bytes())
+        return httpx.Response(404)
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+    result = adapter.generate(blueprint, duration_seconds=1)
+    return result, requests
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        httpx.ConnectError("connection refused"),
+        httpx.ReadTimeout("timed out"),
+        httpx.Response(503),
+        httpx.Response(200, content=b"not json"),
+        {"data": []},
+        {"data": {}},
+        {"data": {"caption": None}},
+        {"data": {"caption": 123}},
+        {"data": {"caption": "  "}},
+        {"data": {"caption": "x" * 513}},
+    ],
+    ids=[
+        "connection",
+        "timeout",
+        "http",
+        "invalid-json",
+        "non-dictionary-data",
+        "missing-caption",
+        "missing-caption-value",
+        "non-string-caption",
+        "blank-caption",
+        "overlong-caption",
+    ],
+)
+def test_http_adapter_falls_back_to_local_prompt_for_enrichment_failures(failure):
+    result, requests = _generate_with_format_response(failure)
+
+    assert result.sample_rate == 22050
+    assert [request.url.path for request in requests].count("/format_input") == 1
+    assert [request.url.path for request in requests] == [
+        "/format_input",
+        "/release_task",
+        "/query_result",
+        "/v1/audio",
+    ]
+
+
+@pytest.mark.parametrize("lyrics", [123, "  ", "x" * 4097])
+def test_http_adapter_ignores_invalid_optional_lyrics(lyrics):
+    blueprint = make_blueprint().model_copy(
+        update={"prompt": "user wording", "vocal_mode": "vocals"}
+    )
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/format_input":
+            return httpx.Response(
+                200,
+                json={"data": {"caption": "generated caption", "lyrics": lyrics}},
+            )
+        if request.url.path == "/release_task":
+            payload = json.loads(request.content)
+            assert payload["prompt"] == "user wording. generated caption"
+            assert payload["lyrics"] == ""
+            assert payload["thinking"] is True
+            return httpx.Response(200, json={"task_id": "task-1"})
+        if request.url.path == "/query_result":
+            return httpx.Response(
+                200,
+                json={"task_id": "task-1", "status": "done", "result": "rendered.wav"},
+            )
+        return httpx.Response(200, content=make_wav_bytes())
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+    adapter.generate(blueprint, duration_seconds=1)
+
+    assert [request.url.path for request in requests][:2] == ["/format_input", "/release_task"]
+
+
+@pytest.mark.parametrize("returned_lyrics", ["[Verse]\nhello", None])
+def test_http_adapter_vocal_payload_uses_returned_or_empty_lyrics(returned_lyrics):
+    blueprint = make_blueprint().model_copy(update={"vocal_mode": "vocals"})
+    response_data = {"caption": "caption"}
+    if returned_lyrics is not None:
+        response_data["lyrics"] = returned_lyrics
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/format_input":
+            assert json.loads(request.content)["lyrics"] == ""
+            return httpx.Response(200, json={"data": response_data})
+        if request.url.path == "/release_task":
+            payload = json.loads(request.content)
+            assert payload["lyrics"] == (returned_lyrics or "")
+            assert payload["thinking"] is True
+            return httpx.Response(200, json={"task_id": "task-1"})
+        if request.url.path == "/query_result":
+            return httpx.Response(
+                200,
+                json={"task_id": "task-1", "status": "done", "result": "rendered.wav"},
+            )
+        return httpx.Response(200, content=make_wav_bytes())
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+    adapter.generate(blueprint, duration_seconds=1)
+
+
+def test_runpod_adapter_inherits_vocal_http_payload():
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/format_input":
+            return httpx.Response(200, json={"data": {"caption": "caption", "lyrics": "verse"}})
+        if request.url.path == "/release_task":
+            payload = json.loads(request.content)
+            assert payload["lyrics"] == "verse"
+            assert payload["thinking"] is True
+            assert request.headers["authorization"] == "Bearer secret"
+            return httpx.Response(200, json={"task_id": "task-1"})
+        if request.url.path == "/query_result":
+            return httpx.Response(
+                200,
+                json={"task_id": "task-1", "status": "done", "result": "rendered.wav"},
+            )
+        return httpx.Response(200, content=make_wav_bytes())
+
+    adapter = RunPodAceStepAdapter(
+        api_key="secret",
+        base_url="http://runpod.test",
+        timeout_seconds=60.0,
+    )
+    adapter.client = httpx.Client(
+        base_url="http://runpod.test",
+        transport=httpx.MockTransport(handler),
+    )
+    adapter.generate(
+        make_blueprint().model_copy(update={"vocal_mode": "vocals"}),
+        duration_seconds=1,
+    )
+
+    assert [request.url.path for request in requests] == [
+        "/format_input",
+        "/release_task",
+        "/query_result",
+        "/v1/audio",
+    ]
 
 
 def test_http_adapter_raises_when_remote_task_fails():

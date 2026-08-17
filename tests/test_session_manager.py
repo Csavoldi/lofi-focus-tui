@@ -4,6 +4,7 @@ from threading import Event, Lock
 
 import numpy as np
 
+from lofi_focus_tui import composition
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.backend.session_manager import SessionManager
 from lofi_focus_tui.domain import BackendState, EnergyLevel, SessionRequest
@@ -511,6 +512,77 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert "chunk 5 of 5" in " ".join(model.calls[-1][0].texture_layers)
     assert playback.loaded.duration_seconds == 296.0
     assert playback.loaded.audio.shape == (2960,)
+
+
+def test_chunked_generation_reuses_one_prompt_blueprint_lineage(monkeypatch):
+    base_calls = []
+    base_blueprints = []
+    chunk_calls = []
+
+    def record_base(plan):
+        base_calls.append((plan,))
+        blueprint = composition.create_blueprint(plan)
+        base_blueprints.append(blueprint)
+        return blueprint
+
+    def record_chunk(plan, chunk_index, chunk_count, **kwargs):
+        chunk_calls.append((plan, chunk_index, chunk_count, kwargs))
+        return composition.create_chunk_blueprint(plan, chunk_index, chunk_count, **kwargs)
+
+    monkeypatch.setattr(
+        "lofi_focus_tui.backend.session_manager.create_blueprint", record_base
+    )
+    monkeypatch.setattr(
+        "lofi_focus_tui.backend.session_manager.create_chunk_blueprint", record_chunk
+    )
+
+    model = OrdinaryWarningModel()
+    manager = SessionManager(model=model, playback=RecordingPlayback(), chunk_seconds=100)
+    request = make_request().model_copy(
+        update={
+            "duration_minutes": 5,
+            "energy": EnergyLevel.HIGH,
+            "prompt": "late-night rainy room",
+            "vocal_mode": "vocals",
+        }
+    )
+
+    manager.start_session(request)
+    manager.wait_for_active_task()
+
+    plan = base_calls[0][0]
+    blueprint = base_blueprints[0]
+    assert len(base_calls) == 1
+    assert len(chunk_calls) == 3
+    assert base_calls[0][0] is chunk_calls[0][0]
+    assert all(call[0] is base_calls[0][0] for call in chunk_calls)
+    assert all(call[3]["base_blueprint"] is blueprint for call in chunk_calls)
+    assert chunk_calls == [
+        (plan, 0, 3, {"continuation_constraints": [], "base_blueprint": blueprint}),
+        (
+            plan,
+            1,
+            3,
+            {"continuation_constraints": [], "base_blueprint": blueprint},
+        ),
+        (
+            plan,
+            2,
+            3,
+            {
+                "continuation_constraints": [
+                    "match the previous chunk's loudness at the transition"
+                ],
+                "base_blueprint": blueprint,
+            },
+        ),
+    ]
+    assert all(chunk.prompt == "late-night rainy room" for chunk in model.blueprints)
+    assert all(chunk.energy == EnergyLevel.HIGH for chunk in model.blueprints)
+    assert all(chunk.vocal_mode == "vocals" for chunk in model.blueprints)
+    assert model.blueprints[2].continuation_constraints == [
+        "match the previous chunk's loudness at the transition"
+    ]
 
 
 def test_five_minute_session_uses_one_five_minute_chunk():

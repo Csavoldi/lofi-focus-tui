@@ -27,6 +27,9 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
             "preserve shared motif",
             "avoid abrupt section jumps",
         ],
+        prompt=plan.prompt,
+        vocal_mode=plan.vocal_mode,
+        energy=plan.energy,
     )
 
 
@@ -35,8 +38,9 @@ def create_chunk_blueprint(
     chunk_index: int,
     chunk_count: int,
     continuation_constraints: list[str] | None = None,
+    base_blueprint: CompositionBlueprint | None = None,
 ) -> CompositionBlueprint:
-    blueprint = create_blueprint(plan)
+    blueprint = base_blueprint if base_blueprint is not None else create_blueprint(plan)
     section = blueprint.arrangement_sections[
         min(chunk_index, len(blueprint.arrangement_sections) - 1)
     ]
