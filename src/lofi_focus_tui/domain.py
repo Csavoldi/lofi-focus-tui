@@ -7,7 +7,6 @@ except ImportError:  # pragma: no cover - compatibility for Python 3.10
         pass
 
 from typing import Literal
-from unicodedata import normalize
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -91,7 +90,7 @@ class SessionRequest(BaseModel):
         if not isinstance(value, str):
             return value
         value = value.strip()
-        if len(normalize("NFC", value)) > 512:
+        if len(value) > 512:
             raise ValueError("Prompt must be 512 characters or fewer")
         return value
 

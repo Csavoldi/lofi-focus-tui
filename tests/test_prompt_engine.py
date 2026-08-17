@@ -141,14 +141,19 @@ def test_prompt_is_stripped_and_whitespace_only_becomes_empty():
     assert make_request(prompt=" \t\n ").prompt == ""
 
 
-def test_prompt_accepts_normalized_unicode_lengths_up_to_512():
-    assert len(make_request(prompt="e\u0301" * 511).prompt) == 1022
-    assert len(make_request(prompt="e\u0301" * 512).prompt) == 1024
+def test_prompt_accepts_raw_unicode_lengths_up_to_512():
+    assert len(make_request(prompt="é" * 511).prompt) == 511
+    assert len(make_request(prompt="é" * 512).prompt) == 512
 
 
-def test_prompt_rejects_normalized_unicode_longer_than_512():
+def test_prompt_rejects_raw_unicode_longer_than_512():
     with pytest.raises(ValidationError):
-        make_request(prompt="e\u0301" * 513)
+        make_request(prompt="é" * 513)
+
+
+def test_prompt_rejects_decomposed_value_over_raw_length_limit():
+    with pytest.raises(ValidationError):
+        make_request(prompt=("e" + chr(0x301)) * 257)
 
 
 def test_prompt_rejects_non_string_values():
