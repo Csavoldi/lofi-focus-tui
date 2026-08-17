@@ -10,8 +10,8 @@ from pydantic import BaseModel
 
 from lofi_focus_tui.audio.wav import read_wav_bytes
 from lofi_focus_tui.domain import CompositionBlueprint
-from lofi_focus_tui.generation.ace_step import _blueprint_to_prompt
 from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult
+from lofi_focus_tui.generation.prompt_engine import compose_enriched_prompt, compose_local_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 SUCCEEDED_STATUSES = {"1", "succeeded", "success", "completed", "done"}
@@ -126,11 +126,60 @@ class AceStepHttpAdapter:
     ) -> TaskSubmission:
         settings = settings or GenerationSettings(seed=blueprint.seed)
         seed = settings.seed if settings.seed >= 0 else blueprint.seed
+        local_prompt = compose_local_prompt(blueprint)
+        lyrics = "[Instrumental]" if blueprint.vocal_mode == "instrumental" else ""
+        prompt = local_prompt
+        thinking = blueprint.vocal_mode == "vocals"
+        try:
+            response = self.client.post(
+                "/format_input",
+                json={
+                    "prompt": local_prompt,
+                    "lyrics": lyrics,
+                    "temperature": 0.85,
+                    "param_obj": json.dumps(
+                        {
+                            "duration": int(duration_seconds),
+                            "bpm": int(blueprint.tempo_bpm),
+                            "key": blueprint.key_center,
+                            "time_signature": blueprint.meter.split("/", 1)[0],
+                            "language": "unknown",
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                },
+                headers=self._headers(),
+                timeout=min(30.0, self.timeout_seconds),
+            )
+            response.raise_for_status()
+            formatted = response.json()
+            if not isinstance(formatted, dict) or not isinstance(formatted.get("data"), dict):
+                raise ValueError("ACE-Step HTTP format response data must be an object")
+            data = formatted["data"]
+            caption = data.get("caption")
+            if (
+                not isinstance(caption, str)
+                or not (caption := caption.strip())
+                or len(caption) > 512
+            ):
+                raise ValueError("ACE-Step HTTP format response caption is invalid")
+            prompt = compose_enriched_prompt(blueprint, caption)
+            if blueprint.vocal_mode == "vocals":
+                lyrics = data.get("lyrics", "")
+                if (
+                    not isinstance(lyrics, str)
+                    or not (lyrics := lyrics.strip())
+                    or len(lyrics) > 4096
+                ):
+                    lyrics = ""
+        except (httpx.HTTPError, TypeError, ValueError):
+            pass
         payload = {
             "audio_duration": duration_seconds,
-            "prompt": _blueprint_to_prompt(blueprint),
-            "lyrics": "",
-            "thinking": False,
+            "prompt": prompt,
+            "lyrics": lyrics,
+            "thinking": thinking,
             "inference_steps": settings.inference_steps,
             "guidance_scale": settings.guidance_scale,
             "audio_format": settings.output_format,

@@ -67,12 +67,13 @@ class AceStepAdapter:
         settings = settings or GenerationSettings(seed=blueprint.seed)
         seed = settings.seed if settings.seed >= 0 else blueprint.seed
         save_path = self.output_dir / f"{blueprint.session_id}.{settings.output_format}"
-        prompt = _blueprint_to_prompt(blueprint)
+        prompt = compose_local_prompt(blueprint)
+        lyrics = "[Instrumental]" if blueprint.vocal_mode == "instrumental" else ""
 
         pipeline(
             audio_duration=duration_seconds,
             prompt=prompt,
-            lyrics="",
+            lyrics=lyrics,
             infer_step=settings.inference_steps,
             guidance_scale=settings.guidance_scale,
             scheduler_type=settings.scheduler_type,

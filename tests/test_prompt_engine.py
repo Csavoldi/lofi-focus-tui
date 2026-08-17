@@ -118,6 +118,24 @@ def test_compose_enriched_prompt_appends_caption_to_user_prompt(golden_blueprint
     )
 
 
+def test_compose_enriched_prompt_trims_whitespace_and_respects_caption_boundary(golden_blueprint):
+    golden_blueprint.prompt = "  user wording  "
+
+    result = compose_enriched_prompt(golden_blueprint, f"  {'caption' * 100}  ")
+
+    assert result.startswith("user wording. caption")
+    assert len(result) == MAX_PROMPT_LENGTH
+    assert result == result.rstrip()
+    assert not result.endswith(". ")
+
+
+def test_compose_enriched_prompt_uses_full_trimmed_caption_at_boundary(golden_blueprint):
+    golden_blueprint.prompt = "  "
+    caption = f"  {'x' * MAX_PROMPT_LENGTH}  "
+
+    assert compose_enriched_prompt(golden_blueprint, caption) == "x" * MAX_PROMPT_LENGTH
+
+
 def test_prompt_is_stripped_and_whitespace_only_becomes_empty():
     assert make_request(prompt="  rainy evening  ").prompt == "rainy evening"
     assert make_request(prompt=" \t\n ").prompt == ""
