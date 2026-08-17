@@ -5,9 +5,23 @@ from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.backend.api import create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
 from lofi_focus_tui.config import ServerConfig
-from lofi_focus_tui.domain import EnergyLevel, SessionRequest
+from lofi_focus_tui.domain import BackendStatus, EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.tui.backend_client import BackendClient
+
+
+class FakeManager:
+    def __init__(self):
+        self.requests = []
+
+    def start_session(self, request: SessionRequest) -> BackendStatus:
+        self.requests.append(request)
+        return BackendStatus(
+            state="generating",
+            message="generating",
+            backend="mock",
+            device="cpu",
+        )
 
 
 @pytest.mark.asyncio
@@ -47,6 +61,25 @@ async def test_backend_client_starts_session_through_api():
     final_status = await client.get_status()
 
     assert final_status.state == "playing"
+
+
+@pytest.mark.asyncio
+async def test_backend_client_serializes_prompt_and_vocal_mode():
+    manager = FakeManager()
+    client = BackendClient(transport=ASGITransport(app=create_app(manager=manager)))
+    request = SessionRequest(
+        preset="classic_lofi",
+        duration_minutes=30,
+        energy=EnergyLevel.STEADY,
+        prompt="late-night rainy room",
+        vocal_mode="vocals",
+    )
+
+    status = await client.start_session(request)
+
+    assert status.state == "generating"
+    assert manager.requests[0].prompt == "late-night rainy room"
+    assert manager.requests[0].vocal_mode == "vocals"
 
 
 @pytest.mark.asyncio

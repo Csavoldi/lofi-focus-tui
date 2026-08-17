@@ -6,10 +6,25 @@ from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
 from lofi_focus_tui.backend.api import _build_model, _build_playback, create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
 from lofi_focus_tui.config import AppConfig, GenerationConfig, PlaybackConfig
+from lofi_focus_tui.domain import BackendStatus, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
 from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
+
+
+class FakeManager:
+    def __init__(self):
+        self.requests = []
+
+    def start_session(self, request: SessionRequest) -> BackendStatus:
+        self.requests.append(request)
+        return BackendStatus(
+            state="generating",
+            message="generating",
+            backend="mock",
+            device="cpu",
+        )
 
 
 @pytest.mark.asyncio
@@ -46,6 +61,26 @@ async def test_start_session_endpoint_returns_generating():
     assert response.json()["active_task_id"] is not None
 
     manager.wait_for_active_task()
+
+
+@pytest.mark.asyncio
+async def test_start_session_endpoint_defaults_legacy_prompt_fields():
+    manager = FakeManager()
+    transport = ASGITransport(app=create_app(manager=manager))
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/sessions",
+            json={
+                "preset": "classic_lofi",
+                "duration_minutes": 30,
+                "energy": "steady",
+            },
+        )
+
+    assert response.status_code == 200
+    assert manager.requests[0].prompt == ""
+    assert manager.requests[0].vocal_mode == "instrumental"
 
 
 @pytest.mark.asyncio

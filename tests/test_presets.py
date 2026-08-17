@@ -20,6 +20,13 @@ def test_session_request_defaults_to_auto_device():
     assert request.duration_minutes == 30
 
 
+def test_session_request_defaults_to_instrumental_empty_prompt():
+    request = SessionRequest(preset="classic_lofi", duration_minutes=30, energy="steady")
+
+    assert request.prompt == ""
+    assert request.vocal_mode == "instrumental"
+
+
 def test_music_preset_defaults_to_deep_work_focus():
     request = SessionRequest(preset="classic_lofi", duration_minutes=30, energy="steady")
 
