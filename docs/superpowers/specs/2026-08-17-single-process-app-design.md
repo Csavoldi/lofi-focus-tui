@@ -1,0 +1,148 @@
+# Single-Process Lofi App Design
+
+## Goal
+
+Run `lofi-focus-tui` as one user-facing application process. The TUI should call the
+session manager directly instead of requiring a separately launched Lofi HTTP backend.
+
+## Current problem
+
+The application currently has two Lofi processes:
+
+```text
+lofi TUI -> HTTP localhost:8765 -> lofi-backend -> SessionManager -> generator
+```
+
+This makes a local app feel like a distributed system. Users must start and keep two
+commands running, and an unavailable local port is reported as a backend failure even
+when the application itself could own the session manager.
+
+## Approved architecture
+
+`lofi` will construct the configured model adapter, playback manager, output manager,
+history store, and `SessionManager`, then inject that manager into `LofiFocusApp`:
+
+```text
+lofi process
+├── Textual TUI
+├── SessionManager
+├── background generation worker
+├── playback, history, and export
+└── configured model adapter
+```
+
+`SessionManager` retains its existing single-worker executor. Generation remains
+asynchronous from the TUI's perspective; removing HTTP does not move model inference
+onto the UI event loop.
+
+The existing `backend/session_manager.py` and task machinery remain internal
+implementation modules. They are not separate user-facing entities.
+
+ACE-Step HTTP remains an optional external model service when `generation.backend` is
+`ace-step-http`. This change removes the Lofi TUI/backend split; embedding ACE-Step
+itself is a separate concern and is not part of this work.
+
+## Runtime flow
+
+1. `lofi_focus_tui.cli.main()` loads the application config.
+2. A runtime builder creates the configured model adapter and `SessionManager`.
+3. `LofiFocusApp(session_manager=manager)` starts the Textual application.
+4. On mount and on its existing refresh interval, the TUI reads `manager.health()`.
+5. Start, pause, resume, stop, volume, seek, restart, and export actions call the
+   corresponding manager methods directly.
+6. `SessionManager.start_session()` submits generation to its existing worker and
+   immediately returns a generating status.
+7. Existing status, playback, output, history, prompt, and vocal-mode behavior remains
+   unchanged.
+
+## Code changes
+
+### TUI integration
+
+Replace the HTTP `BackendClient` dependency in `LofiFocusApp` with `SessionManager`.
+The TUI keeps its current async action methods, but their bodies call fast synchronous
+manager methods directly. The manager's worker thread continues to handle generation.
+
+The export screen will preserve its current user-facing error behavior by catching
+manager export errors rather than HTTP errors.
+
+### Runtime construction
+
+Move model, playback, and session-manager construction into a small application runtime
+builder that can be used by the CLI and tests without importing FastAPI or starting a
+server. The builder will preserve the current backend selection and configuration
+behavior for mock, embedded ACE-Step, ACE-Step HTTP, and RunPod adapters.
+
+### Remove the Lofi HTTP boundary
+
+Remove the Lofi FastAPI application and HTTP client path from the normal package:
+
+- remove the `lofi-backend` console script;
+- remove `backend/api.py` once its construction helpers are moved;
+- remove `tui/backend_client.py`;
+- remove FastAPI, HTTPX, and Uvicorn runtime dependencies if no remaining code uses them;
+- remove API/client tests and replace them with direct manager/TUI integration coverage.
+
+The `backend` package name may remain for the internal session manager to avoid an
+unrelated package-wide rename.
+
+### Configuration and diagnostics
+
+Remove the Lofi `[server]` host/port configuration from the active model. Existing TOML
+files containing those keys should remain loadable because unknown legacy keys are
+ignored by the current Pydantic configuration model.
+
+`lofi-doctor` will stop probing port `8765`. It will continue checking Python, config,
+optional model/playback modules, writable cache/output directories, and playback device
+availability. ACE-Step's own endpoint remains configured under `[ace_step_http]` and is
+not treated as the Lofi app server.
+
+### Documentation and commands
+
+Update README, usage, configuration, ACE-Step, and user-acceptance instructions so the
+normal local workflow is:
+
+```bash
+LOFI_BACKEND=mock lofi
+```
+
+For real HTTP generation, users still start the separate ACE-Step-1.5 service, then run
+only `lofi` for the Lofi application.
+
+## Error behavior
+
+- Model construction errors continue to fail during application startup with the
+  existing configuration/model error.
+- Generation failures continue to be represented by `BackendStatus` error state from
+  `SessionManager`.
+- TUI actions receive manager status values directly; there is no synthetic
+  "backend unavailable" status for a stopped local process.
+- Export errors continue to be displayed in the export dialog.
+- Long-running generation remains cancellable through the existing manager controls.
+
+## Testing
+
+Add or update tests to prove:
+
+- the runtime builder selects the same model adapters and settings as before;
+- `LofiFocusApp` calls a supplied manager directly for status and controls;
+- generation remains asynchronous through the manager's worker;
+- prompt and vocal-mode fields reach the manager unchanged;
+- export success and failure behavior remains intact;
+- the CLI exposes only the `lofi` application command;
+- diagnostics no longer depends on port `8765`;
+- the full existing suite and Ruff checks pass.
+
+The primary manual smoke test becomes one process in mock mode:
+
+```bash
+LOFI_BACKEND=mock lofi
+```
+
+## Non-goals
+
+- Do not embed or rewrite ACE-Step-1.5 as part of this change.
+- Do not redesign `SessionManager` generation, playback, chunking, or prompt logic.
+- Do not preserve a hidden localhost Lofi server; direct manager calls are the chosen
+  architecture.
+- Do not add a new public service API.
