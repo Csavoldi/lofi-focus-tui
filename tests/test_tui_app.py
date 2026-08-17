@@ -65,6 +65,118 @@ async def test_tui_composes_blurred_prompt_editor_with_max_length():
 
 
 @pytest.mark.asyncio
+async def test_tui_prompt_focus_lifecycle_preserves_editor_value():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        prompt = pilot.app.query_one("#prompt", Input)
+        await pilot.press("i")
+        assert pilot.app.focused is prompt
+
+        await pilot.press("space", "space", *"freeform", "space", *"idea", "space", "space")
+        value = prompt.value
+        await pilot.press("escape")
+        assert pilot.app.focused is None
+        assert prompt.value == value
+
+        await pilot.press("i")
+        await pilot.press("enter")
+        assert pilot.app.focused is None
+        assert prompt.value == value
+        assert "prompt: freeform idea" in str(pilot.app.query_one("#session").render())
+
+
+@pytest.mark.asyncio
+async def test_tui_focused_command_keys_edit_prompt_without_actions():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("i")
+        await pilot.press(*"sv1p234")
+
+        assert pilot.app.query_one("#prompt", Input).value == "sv1p234"
+        assert backend_client.requests == []
+        assert pilot.app.vocal_mode == "instrumental"
+        assert pilot.app.focus == "deep_work"
+        assert pilot.app.preset == "classic_lofi"
+
+
+@pytest.mark.asyncio
+async def test_tui_unfocused_command_keys_dispatch_actions():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("s")
+        await pilot.press("v", "1", "p", "2", "3", "4")
+
+    assert backend_client.started is True
+    assert pilot.app.vocal_mode == "vocals"
+    assert pilot.app.focus == "reading"
+    assert pilot.app.preset == "neo_soul"
+    assert pilot.app.duration_minutes == 45
+    assert pilot.app.energy == "high"
+    assert pilot.app.style_tags == "ambient, tape"
+
+
+@pytest.mark.asyncio
+async def test_tui_prompt_summary_refreshes_from_editor_value():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        prompt = pilot.app.query_one("#prompt", Input)
+        await pilot.press("i")
+        await pilot.press("space", "space", *"freeform", "space", *"idea", "space", "space")
+        assert "prompt: freeform idea" in str(pilot.app.query_one("#session").render())
+
+        await pilot.press("escape")
+        await pilot.app.action_cycle_focus()
+        await pilot.app.refresh_status()
+
+        assert prompt.value == "  freeform idea  "
+        assert "prompt: freeform idea" in str(pilot.app.query_one("#session").render())
+
+
+@pytest.mark.asyncio
+async def test_tui_prompt_input_max_length_reaches_request_limit():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        await pilot.press("i")
+        prompt = pilot.app.query_one("#prompt", Input)
+        for _ in range(513):
+            prompt.insert_text_at_cursor("x")
+        assert prompt.value == "x" * 512
+        await pilot.press("enter")
+        await pilot.press("s")
+
+    assert backend_client.requests[0].prompt == "x" * 512
+
+
+@pytest.mark.asyncio
+async def test_tui_start_request_uses_stripped_prompt_and_vocal_mode():
+    backend_client = FakeBackendClient()
+    app = LofiFocusApp(backend_client=backend_client)
+
+    async with app.run_test() as pilot:
+        prompt = pilot.app.query_one("#prompt", Input)
+        prompt.value = "  late night  "
+        await pilot.app.action_start_session()
+        await pilot.press("v")
+        await pilot.app.action_start_session()
+
+    instrumental, vocal = backend_client.requests
+    assert instrumental.prompt == "late night"
+    assert instrumental.vocal_mode == "instrumental"
+    assert instrumental.avoid_tags == ["vocals"]
+    assert vocal.prompt == "late night"
+    assert vocal.vocal_mode == "vocals"
+    assert vocal.avoid_tags == []
+
+
+@pytest.mark.asyncio
 async def test_tui_prompt_editor_value_survives_category_changes():
     app = LofiFocusApp(backend_client=FakeBackendClient())
 
@@ -253,7 +365,7 @@ def test_tui_registers_main_and_help_bindings():
     keys = {binding[0] for binding in LofiFocusApp.BINDINGS}
 
     assert keys == {
-        "1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h",
+        "i", "v", "escape", "1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h",
         "left_square_bracket", "right_square_bracket", "comma", "full_stop", "0", "e",
     }
 
