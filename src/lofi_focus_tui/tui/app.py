@@ -29,6 +29,7 @@ class OptionGuideScreen(ModalScreen[None]):
 
 
 class ExportScreen(ModalScreen[None]):
+    AUTO_FOCUS = "*"
     BINDINGS = [
         ("escape", "app.pop_screen", "Cancel export"),
         ("q", "app.quit", "Quit"),
@@ -50,6 +51,7 @@ class ExportScreen(ModalScreen[None]):
 
 
 class LofiFocusApp(App[None]):
+    AUTO_FOCUS = None
     BINDINGS = [
         ("s", "start_session", "Start"),
         ("space", "toggle_pause", "Pause/Resume"),
@@ -94,6 +96,8 @@ class LofiFocusApp(App[None]):
         self.duration_minutes = 30
         self.energy = EnergyLevel.STEADY
         self.style_tags = "lofi, neo_soul"
+        self.prompt = ""
+        self.vocal_mode = "instrumental"
 
     def compose(self) -> ComposeResult:
         yield Static(render_status(self.status), id="status")
@@ -104,15 +108,19 @@ class LofiFocusApp(App[None]):
                 self.duration_minutes,
                 self.energy,
                 self.style_tags,
+                self.prompt,
+                self.vocal_mode,
             ),
             id="session",
         )
+        yield Input(value=self.prompt, max_length=512, id="prompt")
         yield Static(render_controls(self.status), id="controls")
         yield Static(render_history(self.status), id="history")
 
     async def on_mount(self) -> None:
         await self.refresh_status()
         self.set_interval(1.0, self.refresh_status)
+        self.set_focus(None)
 
     async def refresh_status(self) -> None:
         self.status = await self.backend_client.get_status()
@@ -191,6 +199,7 @@ class LofiFocusApp(App[None]):
         self.push_screen(ExportScreen())
 
     def _refresh_display(self) -> None:
+        self.prompt = self.query_one("#prompt", Input).value
         self.query_one("#status", Static).update(render_status(self.status))
         self.query_one("#session", Static).update(
             render_session(
@@ -199,6 +208,8 @@ class LofiFocusApp(App[None]):
                 self.duration_minutes,
                 self.energy,
                 self.style_tags,
+                self.prompt,
+                self.vocal_mode,
             )
         )
         self.query_one("#controls", Static).update(render_controls(self.status))

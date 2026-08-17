@@ -1,6 +1,7 @@
 from enum import Enum
 
 import pytest
+from textual.widgets import Input
 
 from lofi_focus_tui.domain import BackendStatus, ExportResponse
 from lofi_focus_tui.options import (
@@ -12,7 +13,7 @@ from lofi_focus_tui.options import (
 from lofi_focus_tui.tui import app as app_module
 from lofi_focus_tui.tui import widgets as widgets_module
 from lofi_focus_tui.tui.app import LofiFocusApp
-from lofi_focus_tui.tui.widgets import DURATIONS
+from lofi_focus_tui.tui.widgets import DURATIONS, prompt_summary, render_session
 
 
 def status_text(app: LofiFocusApp) -> str:
@@ -25,6 +26,55 @@ def status_text(app: LofiFocusApp) -> str:
             renderable = widget.render()
         parts.append(str(renderable))
     return "\n".join(parts)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("", "(category-generated)"),
+        ("  \n\t", "(category-generated)"),
+        ("  warm piano  ", "warm piano"),
+        ("é" * 80, "é" * 80),
+        ("x" * 81, f"{'x' * 77}..."),
+    ],
+)
+def test_prompt_summary_strips_and_limits_prompt(prompt, expected):
+    assert prompt_summary(prompt) == expected
+
+
+def test_render_session_includes_prompt_summary_and_vocal_mode():
+    rendered = render_session(
+        "deep_work", "classic_lofi", 30, "steady", "lofi, neo_soul",
+        "  warm piano  ", "instrumental",
+    )
+
+    assert "prompt: warm piano" in rendered
+    assert "mode: instrumental" in rendered
+
+
+@pytest.mark.asyncio
+async def test_tui_composes_blurred_prompt_editor_with_max_length():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        prompt = pilot.app.query_one("#prompt", Input)
+
+        assert prompt.max_length == 512
+        assert prompt.value == ""
+        assert pilot.app.focused is None
+
+
+@pytest.mark.asyncio
+async def test_tui_prompt_editor_value_survives_category_changes():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        prompt = pilot.app.query_one("#prompt", Input)
+        prompt.value = "  freeform idea  "
+        await pilot.app.action_cycle_focus()
+
+        assert prompt.value == "  freeform idea  "
+        assert "prompt: freeform idea" in str(pilot.app.query_one("#session").render())
 
 
 class FakeBackendClient:
