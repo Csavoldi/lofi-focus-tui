@@ -1,7 +1,9 @@
 import pytest
 from pydantic import ValidationError
 
+from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.domain import CompositionBlueprint, EnergyLevel, SessionPlan, SessionRequest
+from lofi_focus_tui.presets import expand_preset
 
 
 def make_request(**overrides):
@@ -42,6 +44,18 @@ def test_prompt_and_vocal_mode_default_values():
     request = make_request()
     assert request.prompt == ""
     assert request.vocal_mode == "instrumental"
+
+
+def test_prompt_and_vocal_mode_propagate_through_blueprints():
+    plan = expand_preset(
+        make_request(prompt="late-night rainy room", vocal_mode="vocals", seed=7)
+    )
+    blueprint = create_blueprint(plan)
+    chunk = create_chunk_blueprint(plan, chunk_index=0, chunk_count=1)
+
+    for value in (plan, blueprint, chunk):
+        assert value.prompt == "late-night rainy room"
+        assert value.vocal_mode == "vocals"
 
 
 @pytest.mark.parametrize("value", ["", "  ", 123])

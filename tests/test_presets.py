@@ -114,6 +114,30 @@ def test_expand_deep_work_preset_has_focus_constraints():
     assert "stable tempo" in plan.continuity_requirements
 
 
+def test_expand_preset_filters_legacy_vocal_avoid_tags_by_mode():
+    request = SessionRequest(
+        focus="deep_work",
+        preset="classic_lofi",
+        duration_minutes=30,
+        energy=EnergyLevel.STEADY,
+        style_tags=["neo_soul_tag"],
+        avoid_tags=["vocals", "no_vocals", " NO VOCALS ", "keep_warm"],
+        vocal_mode="vocals",
+    )
+
+    vocal_plan = expand_preset(request)
+    instrumental_plan = expand_preset(request.model_copy(update={"vocal_mode": "instrumental"}))
+
+    assert "vocals" not in vocal_plan.avoid_traits
+    assert "no vocals" not in vocal_plan.avoid_traits
+    assert "keep warm" in vocal_plan.avoid_traits
+    assert "sharp transients" in vocal_plan.avoid_traits
+    assert "sudden drops" in vocal_plan.avoid_traits
+    assert "vocals" in instrumental_plan.avoid_traits
+    assert "no vocals" in instrumental_plan.avoid_traits
+    assert " NO VOCALS " in instrumental_plan.avoid_traits
+
+
 def test_expand_preset_uses_request_seed_when_provided():
     plan = expand_preset(
         SessionRequest(

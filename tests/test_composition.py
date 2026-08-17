@@ -133,6 +133,33 @@ def test_chunk_blueprints_preserve_identity_with_chunk_context():
     assert "chunk 2 of 3" in " ".join(second.texture_layers)
 
 
+def test_chunk_blueprint_reuses_supplied_base_blueprint(monkeypatch):
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.HIGH,
+            prompt="late-night rainy room",
+            vocal_mode="vocals",
+            seed=123,
+        )
+    )
+    base = create_blueprint(plan)
+
+    def fail_create_blueprint(_plan):
+        raise AssertionError("create_blueprint should not be called")
+
+    monkeypatch.setattr("lofi_focus_tui.composition.create_blueprint", fail_create_blueprint)
+    chunk = create_chunk_blueprint(plan, 0, 2, base_blueprint=base)
+
+    assert chunk.prompt == base.prompt == plan.prompt
+    assert chunk.energy == base.energy == plan.energy
+    assert chunk.vocal_mode == base.vocal_mode == plan.vocal_mode
+    assert chunk.seed == base.seed == plan.seed
+    assert chunk.session_id == base.session_id == plan.session_id
+
+
 def test_chunk_blueprint_carries_continuation_constraints():
     plan = expand_preset(
         SessionRequest(
