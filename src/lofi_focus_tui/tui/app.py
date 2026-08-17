@@ -2,9 +2,11 @@ from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
+from lofi_focus_tui.config import AppConfig, load_config
 from lofi_focus_tui.domain import BackendState, BackendStatus, EnergyLevel, SessionRequest
 from lofi_focus_tui.options import ENERGY_OPTIONS, FOCUS_OPTIONS, PRESET_OPTIONS, STYLE_OPTIONS
 from lofi_focus_tui.tui.backend_client import BackendClient
+from lofi_focus_tui.tui.themes import DEFAULT_THEME, THEMES, Theme
 from lofi_focus_tui.tui.widgets import (
     DURATIONS,
     cycle_value,
@@ -25,7 +27,7 @@ class OptionGuideScreen(ModalScreen[None]):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Static(render_option_guide(), id="option-guide")
+        yield Static(render_option_guide(self.app.active_theme), id="option-guide")
 
 
 class ExportScreen(ModalScreen[None]):
@@ -65,6 +67,7 @@ class LofiFocusApp(App[None]):
         ("2", "cycle_duration", "Duration"),
         ("3", "cycle_energy", "Energy"),
         ("4", "cycle_style_tags", "Style"),
+        ("t", "cycle_theme", "Theme"),
         ("left_square_bracket", "volume_down", "Volume down"),
         ("right_square_bracket", "volume_up", "Volume up"),
         ("comma", "rewind", "Rewind"),
@@ -85,9 +88,15 @@ class LofiFocusApp(App[None]):
     }
     """
 
-    def __init__(self, backend_client: BackendClient | None = None) -> None:
+    def __init__(
+        self,
+        backend_client: BackendClient | None = None,
+        config: AppConfig | None = None,
+    ) -> None:
         super().__init__()
         self.backend_client = backend_client or BackendClient.from_config()
+        config = config or load_config()
+        self.active_theme: Theme = THEMES.get(config.theme, THEMES[DEFAULT_THEME])
         self.status = BackendStatus(
             state="idle",
             message="starting",
@@ -103,7 +112,7 @@ class LofiFocusApp(App[None]):
         self.vocal_mode = "instrumental"
 
     def compose(self) -> ComposeResult:
-        yield Static(render_status(self.status), id="status")
+        yield Static(render_status(self.status, self.active_theme), id="status")
         yield Static(
             render_session(
                 self.focus,
@@ -113,12 +122,13 @@ class LofiFocusApp(App[None]):
                 self.style_tags,
                 self.prompt,
                 self.vocal_mode,
+                self.active_theme,
             ),
             id="session",
         )
         yield Input(value=self.prompt, max_length=512, id="prompt")
-        yield Static(render_controls(self.status), id="controls")
-        yield Static(render_history(self.status), id="history")
+        yield Static(render_controls(self.status, self.active_theme), id="controls")
+        yield Static(render_history(self.status, self.active_theme), id="history")
 
     async def on_mount(self) -> None:
         await self.refresh_status()
@@ -222,6 +232,11 @@ class LofiFocusApp(App[None]):
         self.style_tags = cycle_value(STYLE_OPTIONS, self.style_tags)
         self._refresh_display()
 
+    async def action_cycle_theme(self) -> None:
+        names = list(THEMES)
+        self.active_theme = THEMES[names[(names.index(self.active_theme.name) + 1) % len(names)]]
+        self._refresh_display()
+
     def action_show_guide(self) -> None:
         self.push_screen(OptionGuideScreen())
 
@@ -230,7 +245,7 @@ class LofiFocusApp(App[None]):
 
     def _refresh_display(self) -> None:
         self.prompt = self.query_one("#prompt", Input).value.strip()
-        self.query_one("#status", Static).update(render_status(self.status))
+        self.query_one("#status", Static).update(render_status(self.status, self.active_theme))
         self.query_one("#session", Static).update(
             render_session(
                 self.focus,
@@ -238,9 +253,10 @@ class LofiFocusApp(App[None]):
                 self.duration_minutes,
                 self.energy,
                 self.style_tags,
-                self.prompt,
+             self.prompt,
                 self.vocal_mode,
+                self.active_theme,
             )
         )
-        self.query_one("#controls", Static).update(render_controls(self.status))
-        self.query_one("#history", Static).update(render_history(self.status))
+        self.query_one("#controls", Static).update(render_controls(self.status, self.active_theme))
+        self.query_one("#history", Static).update(render_history(self.status, self.active_theme))

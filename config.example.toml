@@ -1,3 +1,5 @@
+theme = "city_pop"
+
 [server]
 host = "127.0.0.1"
 port = 8765
@@ -16,7 +18,7 @@ volume = 0.8
 fade_seconds = 1.5
 
 [ace_step_http]
-base_url = "http://127.0.0.1:8001"
+base_url = "http://192.168.2.220:8001"
 api_key = ""
 timeout_seconds = 1800.0
 

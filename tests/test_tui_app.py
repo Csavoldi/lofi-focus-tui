@@ -3,6 +3,7 @@ from enum import Enum
 import pytest
 from textual.widgets import Input
 
+from lofi_focus_tui.config import AppConfig
 from lofi_focus_tui.domain import BackendStatus, ExportResponse
 from lofi_focus_tui.options import (
     ENERGY_OPTIONS,
@@ -13,6 +14,7 @@ from lofi_focus_tui.options import (
 from lofi_focus_tui.tui import app as app_module
 from lofi_focus_tui.tui import widgets as widgets_module
 from lofi_focus_tui.tui.app import LofiFocusApp
+from lofi_focus_tui.tui.themes import THEMES
 from lofi_focus_tui.tui.widgets import DURATIONS, prompt_summary, render_session
 
 
@@ -365,7 +367,7 @@ def test_tui_registers_main_and_help_bindings():
     keys = {binding[0] for binding in LofiFocusApp.BINDINGS}
 
     assert keys == {
-        "i", "v", "escape", "1", "p", "2", "3", "4", "s", "space", "x", "r", "q", "h",
+       "i", "v", "escape", "1", "p", "2", "3", "4", "t", "s", "space", "x", "r", "q", "h",
         "left_square_bracket", "right_square_bracket", "comma", "full_stop", "0", "e",
     }
 
@@ -539,7 +541,7 @@ async def test_tui_option_guide_renders_every_shared_catalog_description():
         text = str(guide.query_one("#option-guide").render())
 
     assert guide is not pilot.app.default_screen
-    for catalog in (FOCUS_OPTIONS, PRESET_OPTIONS, ENERGY_OPTIONS, STYLE_OPTIONS):
+    for catalog in (FOCUS_OPTIONS, PRESET_OPTIONS, ENERGY_OPTIONS, STYLE_OPTIONS, THEMES):
         for option in catalog.values():
             assert option.description in text
 
@@ -557,9 +559,10 @@ async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
             pilot.app.duration_minutes,
             pilot.app.energy,
             pilot.app.style_tags,
+            pilot.app.active_theme,
         )
         status_calls = backend_client.status_calls
-        await pilot.press("1", "p", "2", "3", "4", "s", "space", "x", "r")
+        await pilot.press("1", "p", "2", "3", "4", "t", "s", "space", "x", "r")
 
     assert (
         pilot.app.focus,
@@ -567,6 +570,7 @@ async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
         pilot.app.duration_minutes,
         pilot.app.energy,
         pilot.app.style_tags,
+        pilot.app.active_theme,
     ) == selections
     assert backend_client.status_calls == status_calls
     assert backend_client.requests == []
@@ -598,3 +602,48 @@ async def test_tui_option_guide_closes_with_escape_or_h(close_key):
         assert pilot.app.screen is not pilot.app.default_screen
         await pilot.press(close_key)
         assert pilot.app.screen is pilot.app.default_screen
+
+
+@pytest.mark.asyncio
+async def test_tui_theme_key_cycles_theme_and_renders_line():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        assert "theme: city_pop" in str(pilot.app.query_one("#session").render())
+        await pilot.press("t")
+        text = str(pilot.app.query_one("#session").render())
+
+    assert pilot.app.active_theme.name == "neon_tokyo"
+    assert "theme: neon_tokyo" in text
+
+
+@pytest.mark.asyncio
+async def test_tui_theme_key_wraps_around_full_catalog():
+    app = LofiFocusApp(backend_client=FakeBackendClient())
+
+    async with app.run_test() as pilot:
+        for _ in range(len(THEMES)):
+            await pilot.press("t")
+
+    assert pilot.app.active_theme.name == "city_pop"
+
+
+@pytest.mark.asyncio
+async def test_tui_uses_theme_from_config():
+    app = LofiFocusApp(
+        backend_client=FakeBackendClient(), config=AppConfig(theme="vhs")
+    )
+
+    async with app.run_test() as pilot:
+        text = str(pilot.app.query_one("#session").render())
+
+    assert pilot.app.active_theme.name == "vhs"
+    assert "theme: vhs" in text
+
+
+def test_tui_falls_back_to_default_theme_for_unknown_config_theme():
+    app = LofiFocusApp(
+        backend_client=FakeBackendClient(), config=AppConfig(theme="glitter")
+    )
+
+    assert app.active_theme.name == "city_pop"
