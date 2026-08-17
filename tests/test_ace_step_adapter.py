@@ -9,6 +9,7 @@ from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter, _blueprint_to_prompt
+from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
@@ -82,6 +83,7 @@ def test_blueprint_prompt_includes_focus_recipes_and_boundaries():
     assert ", ".join(blueprint.focus_constraints) in prompt
     assert ", ".join(blueprint.arrangement_sections) in prompt
     assert all(constraint in prompt for constraint in blueprint.boundary_constraints)
+    assert prompt == compose_local_prompt(blueprint)
 
 
 def test_chunk_blueprint_prompt_includes_focus_recipes_and_boundaries(tmp_path):
