@@ -183,9 +183,9 @@ class SessionManager:
                 output_path = self._status.output_path
                 if output_path is None:
                     raise RuntimeError("no completed audio session to export")
-                audio_path, metadata_path = self.output_manager.export_session(
-                    Path(output_path), Path(directory)
-                )
+            audio_path, metadata_path = self.output_manager.export_session(
+                Path(output_path), Path(directory)
+            )
         return ExportResponse(
             message="session exported",
             audio_path=str(audio_path),
@@ -193,6 +193,7 @@ class SessionManager:
         )
 
     def stop_session(self) -> BackendStatus:
+        recent_sessions = self._recent_session_labels()
         with self._playback_lock:
             with self._lock:
                 self._ensure_open_locked()
@@ -205,7 +206,7 @@ class SessionManager:
                     message="stopped",
                     backend=self.model.name,
                     playback=self._playback_mode(),
-                    recent_sessions=self._recent_session_labels(),
+                    recent_sessions=recent_sessions,
                 )
                 return self._status.model_copy(update=self._playback_status_fields())
 
@@ -344,7 +345,7 @@ class SessionManager:
                 active_task_id=task.task_id,
                 output_path=task.output_path,
                 error=task.error,
-                recent_sessions=self._recent_session_labels(),
+                recent_sessions=list(self._status.recent_sessions),
                 chunk_index=chunk_index,
                 chunk_count=chunk_count,
                 backend=self.model.name,
@@ -573,6 +574,7 @@ class SessionManager:
                 output_path = self._output_path(result.metadata)
                 metadata_path = None
                 record = None
+                recent_sessions = None
             if output_manager is not None:
                 prepared = self._prepare_output_record(
                     task=task,
@@ -605,6 +607,7 @@ class SessionManager:
                     if not self._is_active_task(task):
                         self._rollback_history_record(record)
                     raise
+                recent_sessions = self._recent_session_labels()
             should_drop = False
             with self._playback_lock:
                 with self._lock:
@@ -635,7 +638,11 @@ class SessionManager:
                                     active_task_id=task.task_id,
                                     output_path=task.output_path,
                                     error=task.error,
-                                    recent_sessions=self._recent_session_labels(),
+                                    recent_sessions=list(
+                                        recent_sessions
+                                        if recent_sessions is not None
+                                        else self._status.recent_sessions
+                                    ),
                                     chunk_index=chunk_count,
                                     chunk_count=chunk_count,
                                     backend=self.model.name,

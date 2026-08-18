@@ -826,6 +826,34 @@ def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
             operation()
 
 
+def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
+    class LockProbeHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.manager = None
+            self.lock_free = []
+
+        def list(self, limit=20):
+            if self.manager is not None:
+                acquired = self.manager._lock.acquire(blocking=False)
+                self.lock_free.append(acquired)
+                if acquired:
+                    self.manager._lock.release()
+            return super().list(limit=limit)
+
+    history_store = LockProbeHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    history_store.manager = manager
+
+    manager.start_session(make_request())
+    manager.wait_for_active_task(timeout=1.0)
+    manager.stop_session()
+    manager.shutdown()
+
+    assert history_store.lock_free
+    assert all(history_store.lock_free)
+
+
 def test_shutdown_does_not_wait_for_blocked_history_snapshot(tmp_path):
     class BlockingHistoryStore(HistoryStore):
         def __init__(self, path):
