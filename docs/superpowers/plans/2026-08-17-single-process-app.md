@@ -93,7 +93,9 @@
   the manager directly, and the configured theme comes from the same `AppConfig` passed to
   the app. Add a CLI test that monkeypatches config loading, runtime construction, and
   `LofiFocusApp.run()` to prove one exact `AppConfig` object reaches both the manager
-  builder and app constructor.
+  builder and app constructor. Add a slow fake export test that proves the Textual event
+  loop yields while `export_current()` runs in a worker thread, and a lifecycle test that
+  app unmount calls `session_manager.shutdown()`.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail for the old seam.**
 
@@ -120,8 +122,7 @@
   In `ExportScreen.on_input_submitted`, call `await asyncio.to_thread(
   self.app.session_manager.export_current, event.value)`. Preserve the current error text
   and success notification behavior. The manager implementation will release its locks
-  before copying in Task 4. Add a slow fake export test that proves the event loop yields;
-  the concurrent manager-lock test remains in Task 4.
+  before copying in Task 4; the concurrent manager-lock test remains in Task 4.
 
 - [ ] **Step 6: Run the TUI/runtime tests and commit.**
 
@@ -152,11 +153,12 @@
   - `shutdown()` marks the manager closed, cancels the active task, stops playback, and
     returns after a fixed two-second wait at most;
   - repeated shutdown calls are no-ops;
-  - new sessions and controls raise `RuntimeError("session manager is closed")`;
+  - new sessions, controls, and export raise `RuntimeError("session manager is closed")`;
   - `health()` returns idle/`closed` after shutdown;
   - a blocked worker that completes after shutdown cannot write audio/metadata, update
     status, append history, or restart playback;
-  - cleanup occurs only after the worker stops;
+  - cleanup occurs only after the worker stops, both when it stops within the wait and when
+    delayed cleanup is required;
   - `AceStepHttpAdapter.close()` closes its owned HTTPX client exactly once.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail.**
@@ -167,23 +169,28 @@
 
 - [ ] **Step 3: Implement the closed state and cooperative shutdown.**
 
-  Add a lock-protected closed flag, a two-second active-future wait, cancellation of the
-  active `GenerationTask` and pending futures, and idempotent cleanup. Reject new manager
-  operations after close with the exact runtime error. Keep a running model alive until
-  its worker exits; never close an adapter while that worker can still use it. Close the
-  adapter and executor in the worker finalization path when delayed cleanup is required.
+  Add a lock-protected closed flag, a two-second active-future wait, and idempotent
+  cleanup. Set the active `GenerationTask.cancel_event`, wait two seconds for cooperative
+  cancellation, then cancel only queued futures. Reject new manager operations after close
+  with the exact runtime error. Keep a running model alive until its worker exits; never
+  close an adapter while that worker can still use it. Close the adapter and executor in
+  the worker finalization path after worker termination, including the normal in-timeout
+  path. Call `close()` only when `getattr(model, "close", None)` is callable; adapters
+  without resources use the no-op path.
 
 - [ ] **Step 4: Guard every post-close generation commit.**
 
-  Check the closed/active state before `OutputManager` writes audio or metadata and again
-  before history, playback, task output, and status updates. A late result must be dropped
-  without creating output artifacts.
+  Add a lifecycle/commit lock. Hold it across the closed/active check and the
+  `OutputManager` audio/metadata writes, so shutdown cannot race between the check and
+  file creation. Re-check before history, playback, task output, and status updates. A late
+  result must be dropped without creating `audio.wav` or `metadata.json`, and without a
+  history entry.
 
 - [ ] **Step 5: Make the HTTP adapter own and close its client.**
 
   Add an idempotent `close()` method to `AceStepHttpAdapter` that closes its owned client.
-  Preserve injected test-client ownership by not closing externally supplied clients unless
-  the adapter owns them. `RunPodAceStepAdapter` inherits the behavior.
+  Track client ownership so injected test clients are not closed; only a client created by
+  the adapter is closed. `RunPodAceStepAdapter` inherits the behavior.
 
 - [ ] **Step 6: Run focused lifecycle tests and commit.**
 
@@ -205,8 +212,9 @@
 - [ ] **Step 1: Write a failing lock-release test.**
 
   Use a slow output manager whose copy blocks on an event. Start `export_current()` in a
-  worker thread, then assert a concurrent `health()` or playback operation acquires the
-  manager locks before releasing the copy event.
+  worker thread, then assert a concurrent playback operation such as `pause_session()`,
+  `seek_playback()`, or `restart_playback()` acquires `_playback_lock` before releasing
+  the copy event.
 
 - [ ] **Step 2: Run the focused test and confirm it fails.**
 
