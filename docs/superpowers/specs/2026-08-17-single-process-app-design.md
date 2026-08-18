@@ -66,10 +66,15 @@ cooperative cancellation, the app may remain alive until that current generation
 Python cannot safely hard-kill a model thread inside the single process. The manager must
 not close a model adapter while its worker is still using it. Cleanup runs after worker
 termination, then closes the adapter and executor. Repeated shutdown calls are no-ops, and
-new sessions raise `RuntimeError("session manager is closed")`. A quit-during-generation
-test must verify the closed state, cancellation request, playback stop, safe delayed
-cleanup, and post-close rejection. The ACE-Step HTTP adapter's `close()` closes its owned
-HTTPX client; adapters without resources may use a no-op cleanup path.
+new sessions and controls raise `RuntimeError("session manager is closed")`. `health()`
+returns an idle status with message `closed`, and export raises the same runtime error.
+`shutdown()` returns after the fixed two-second wait even if a worker is still running;
+the worker's finalization path performs delayed cleanup. Every post-close completion is
+discarded before it can update status, save a completed session, or restart playback.
+Repeated shutdown calls are no-ops. A quit-during-generation test must verify the closed
+state, cancellation request, playback stop, safe delayed cleanup, discarded late results,
+and post-close rejection. The ACE-Step HTTP adapter's `close()` closes its owned HTTPX
+client; adapters without resources may use a no-op cleanup path.
 
 ## Code changes
 
@@ -84,8 +89,9 @@ manager export errors rather than HTTP errors. Because `export_current()` copies
 synchronously, the TUI will invoke it with `asyncio.to_thread` so export I/O does not block
 the Textual event loop. `SessionManager.export_current()` will capture the completed output
 path while holding its locks, release those locks, and perform file copying afterward. A
-test will use a deliberately slow export manager and verify that the handler yields while
-the copy is in progress.
+test will use a deliberately slow export manager and verify both that the handler yields
+while the copy is in progress and that a concurrent manager operation can acquire the
+released lock.
 
 ### Runtime construction
 
