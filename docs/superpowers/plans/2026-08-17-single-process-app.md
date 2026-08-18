@@ -245,13 +245,15 @@
 
 **Files:**
 - Modify: `src/lofi_focus_tui/config.py`
+- Modify: `src/lofi_focus_tui/backend/api.py` to keep the temporary API shim runnable
 - Modify: `config.example.toml`
 - Modify: `tests/test_config.py`
 
 - [ ] **Step 1: Write failing config migration tests.**
 
   Assert the default `AppConfig` has no active `server` field, a TOML file containing a
-  legacy `[server]` section still loads, and generation/ACE-Step/theme settings remain
+  legacy `[server]` section with non-default host/port values still loads, those values do
+  not appear in `AppConfig.model_dump()`, and generation/ACE-Step/theme settings remain
   intact. Assert `httpx` remains a declared runtime dependency in `pyproject.toml`.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail.**
@@ -260,10 +262,14 @@
 
   Expected: current tests still expose `config.server` and the migration assertion fails.
 
-- [ ] **Step 3: Remove `ServerConfig` and the `AppConfig.server` field.**
+- [ ] **Step 3: Remove active server configuration while preserving the temporary shim.**
 
-  Keep Pydantic’s default ignored-extra behavior so old `[server]` sections are accepted
-  but not used. Update default assertions and add the explicit legacy migration test.
+  Remove the `AppConfig.server` field while keeping the standalone `ServerConfig` type
+  temporarily for `BackendClient.from_config()` and the compatibility API. Keep Pydantic’s
+  default ignored-extra behavior so old `[server]` sections are accepted but not used.
+  Update the temporary `backend/api.py` entry point to use standalone default server values
+  rather than reading `AppConfig.server`. Update default assertions and add the explicit
+  legacy migration test. Task 7 deletes this temporary type and API/client path together.
 
 - [ ] **Step 4: Remove the `[server]` block from the example config.**
 
@@ -276,7 +282,7 @@
   Expected: all config tests pass.
 
   ```bash
-  git add src/lofi_focus_tui/config.py config.example.toml tests/test_config.py
+  git add src/lofi_focus_tui/config.py src/lofi_focus_tui/backend/api.py config.example.toml tests/test_config.py
   git commit -m "refactor: remove local server configuration"
   ```
 
