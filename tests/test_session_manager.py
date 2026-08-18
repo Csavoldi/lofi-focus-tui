@@ -895,8 +895,10 @@ def test_export_releases_manager_locks_before_copy(tmp_path):
             pause_thread.join(timeout=1.0)
         manager.shutdown()
 
-    assert not export_thread.is_alive()
-    assert not pause_thread.is_alive()
+    if export_thread is not None:
+        assert not export_thread.is_alive()
+    if pause_thread is not None:
+        assert not pause_thread.is_alive()
     assert export_errors == []
     assert playback_errors == []
 
