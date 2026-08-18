@@ -178,15 +178,14 @@ class SessionManager:
         with self._playback_lock:
             with self._lock:
                 self._ensure_open_locked()
-                output_manager = self.output_manager
-                if output_manager is None:
+                if self.output_manager is None:
                     raise RuntimeError("no completed audio session to export")
                 output_path = self._status.output_path
                 if output_path is None:
                     raise RuntimeError("no completed audio session to export")
-        audio_path, metadata_path = output_manager.export_session(
-            Path(output_path), Path(directory)
-        )
+                audio_path, metadata_path = self.output_manager.export_session(
+                    Path(output_path), Path(directory)
+                )
         return ExportResponse(
             message="session exported",
             audio_path=str(audio_path),
@@ -225,7 +224,7 @@ class SessionManager:
                 message="closed",
                 backend=self.model.name,
                 playback=self._playback_mode(),
-                recent_sessions=self._recent_session_labels(),
+                recent_sessions=list(self._status.recent_sessions),
             )
 
         with self._playback_lock:
@@ -747,6 +746,16 @@ class SessionManager:
             updated = [item for item in records if item.session_id != record.session_id]
             if len(updated) != len(records):
                 self.history_store._write_records(updated)
+        with self._lock:
+            closed = self._closed
+        if not closed:
+            return
+        recent_sessions = self._recent_session_labels()
+        with self._lock:
+            if self._closed:
+                self._status = self._status.model_copy(
+                    update={"recent_sessions": recent_sessions}
+                )
 
     def _ensure_open(self) -> None:
         with self._lock:

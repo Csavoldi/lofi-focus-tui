@@ -826,34 +826,42 @@ def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
             operation()
 
 
-def test_export_releases_locks_before_copying(tmp_path):
-    class ExportProbe:
-        def __init__(self):
-            self.manager = None
-            self.lock_was_free = None
-            self.playback_lock_was_free = None
+def test_shutdown_does_not_wait_for_blocked_history_snapshot(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.block_list = False
+            self.release_list = Event()
 
-        def export_session(self, audio_path, directory):
-            self.lock_was_free = self.manager._lock.acquire(blocking=False)
-            if self.lock_was_free:
-                self.manager._lock.release()
-            self.playback_lock_was_free = self.manager._playback_lock.acquire(
-                blocking=False
-            )
-            if self.playback_lock_was_free:
-                self.manager._playback_lock.release()
-            return Path(directory) / "audio.wav", Path(directory) / "metadata.json"
+        def list(self, limit=20):
+            if self.block_list:
+                self.release_list.wait(timeout=5.0)
+            return super().list(limit=limit)
 
-    output_manager = ExportProbe()
-    manager = SessionManager(model=RecordingModel(), output_manager=output_manager)
-    output_manager.manager = manager
-    with manager._lock:
-        manager._status = manager._status.model_copy(update={"output_path": "audio.wav"})
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    history_store.block_list = True
+    shutdown_errors = []
 
-    manager.export_current(str(tmp_path))
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
 
-    assert output_manager.lock_was_free is True
-    assert output_manager.playback_lock_was_free is True
+    shutdown_thread = Thread(target=run_shutdown, daemon=True)
+    started_at = time.monotonic()
+    shutdown_thread.start()
+    try:
+        shutdown_thread.join(timeout=2.3)
+        elapsed = time.monotonic() - started_at
+        assert not shutdown_thread.is_alive()
+        assert elapsed < 2.2
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+    finally:
+        history_store.release_list.set()
+        shutdown_thread.join(timeout=1.0)
 
 
 def test_shutdown_does_not_wait_for_blocked_output_commit(tmp_path):
@@ -924,12 +932,21 @@ def test_shutdown_rolls_back_history_append_after_close(tmp_path):
         def __init__(self, path):
             super().__init__(path)
             self.append_started = Event()
+            self.append_written = Event()
             self.release_append = Event()
+            self.release_append_return = Event()
 
         def append(self, record):
             self.append_started.set()
-            self.release_append.wait()
+            self.release_append.wait(timeout=5.0)
             super().append(record)
+            self.append_written.set()
+            self.release_append_return.wait(timeout=5.0)
+
+        def list(self, limit=20):
+            if self.append_started.is_set() and not self.append_written.is_set():
+                self.append_written.wait(timeout=1.0)
+            return super().list(limit=limit)
 
     model = RecordingModel()
     playback = RecordingPlayback()
@@ -945,6 +962,11 @@ def test_shutdown_rolls_back_history_append_after_close(tmp_path):
 
     manager.start_session(make_request())
     assert history_store.append_started.wait(timeout=1.0)
+    with manager._lock:
+        session_id = manager._status.active_session_id
+        manager._status = manager._status.model_copy(
+            update={"recent_sessions": [f"{session_id[:8]} classic_lofi"]}
+        )
 
     shutdown_errors = []
 
@@ -956,18 +978,21 @@ def test_shutdown_rolls_back_history_append_after_close(tmp_path):
 
     shutdown_thread = Thread(target=run_shutdown, daemon=True)
     shutdown_thread.start()
+    history_store.release_append.set()
+    assert history_store.append_written.wait(timeout=1.0)
     try:
         shutdown_thread.join(timeout=2.3)
         assert not shutdown_thread.is_alive()
         assert shutdown_errors == []
         assert manager.health().message == "closed"
     finally:
-        history_store.release_append.set()
+        history_store.release_append_return.set()
         shutdown_thread.join(timeout=1.0)
 
     manager.wait_for_active_task(timeout=1.0)
     assert history_store.list(limit=5) == []
     assert playback.loaded is None
+    assert manager.health().recent_sessions == []
     assert not list((tmp_path / "outputs").rglob("audio.wav"))
     assert not list((tmp_path / "outputs").rglob("metadata.json"))
 
