@@ -20,6 +20,7 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
     config = load_config()
 
     assert isinstance(config, AppConfig)
+    assert not hasattr(config_module, "Server" + "Config")
     assert "server" not in config.model_dump()
     assert not hasattr(config, "server")
     assert config.generation.backend == "ace-step-http"

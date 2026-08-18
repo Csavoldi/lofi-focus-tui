@@ -12,11 +12,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on Python 3.10
     import tomli as tomllib
 
 
-class ServerConfig(BaseModel):
-    host: str = "127.0.0.1"
-    port: int = 8765
-
-
 class GenerationConfig(BaseModel):
     backend: Literal["mock", "ace-step", "ace-step-http", "runpod"] = "ace-step-http"
     output_format: Literal["wav"] = "wav"

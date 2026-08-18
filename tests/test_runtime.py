@@ -13,7 +13,7 @@ from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
 from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.history import HistoryStore
-from lofi_focus_tui.runtime import build_model, build_session_manager
+from lofi_focus_tui.runtime import build_model, build_playback, build_session_manager
 
 
 def test_cli_main_reuses_one_config_for_manager_and_app(monkeypatch):
@@ -89,6 +89,25 @@ def test_build_session_manager_wires_configured_runtime(monkeypatch, tmp_path):
     assert manager.output_manager.base_dir == output_dir
     assert isinstance(manager.history_store, HistoryStore)
     assert manager.history_store.path == history_path
+
+
+def test_build_playback_uses_null_player_without_sounddevice(monkeypatch):
+    monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: False))
+
+    playback = build_playback(PlaybackConfig(volume=0.25, fade_seconds=2.0))
+
+    assert isinstance(playback.player, NullPlayer)
+    assert playback.volume == 0.25
+    assert playback.fade_seconds == 2.0
+
+
+def test_build_playback_uses_sounddevice_player_when_available(monkeypatch):
+    monkeypatch.setattr(SoundDevicePlayer, "available", staticmethod(lambda: True))
+
+    playback = build_playback(PlaybackConfig(volume=0.5))
+
+    assert isinstance(playback.player, SoundDevicePlayer)
+    assert playback.volume == 0.5
 
 
 def test_build_model_preserves_http_configuration():
