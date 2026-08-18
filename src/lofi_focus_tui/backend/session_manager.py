@@ -186,9 +186,10 @@ class SessionManager:
                 output_path = self._status.output_path
                 if output_path is None:
                     raise RuntimeError("no completed audio session to export")
-            audio_path, metadata_path = self.output_manager.export_session(
-                Path(output_path), Path(directory)
-            )
+                output_manager = self.output_manager
+        audio_path, metadata_path = output_manager.export_session(
+            Path(output_path), Path(directory)
+        )
         return ExportResponse(
             message="session exported",
             audio_path=str(audio_path),

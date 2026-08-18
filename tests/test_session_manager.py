@@ -830,6 +830,65 @@ def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
             operation()
 
 
+def test_export_releases_manager_locks_before_copy(tmp_path):
+    class BlockingOutputManager(OutputManager):
+        def __init__(self, base_dir):
+            super().__init__(base_dir)
+            self.export_started = Event()
+            self.release_export = Event()
+
+        def export_session(self, audio_path, directory):
+            self.export_started.set()
+            self.release_export.wait(timeout=2.0)
+            return super().export_session(audio_path, directory)
+
+    class ProbingPlayback(RecordingPlayback):
+        def __init__(self):
+            super().__init__()
+            self.pause_called = Event()
+
+        def pause(self):
+            self.pause_called.set()
+            return super().pause()
+
+    output_manager = BlockingOutputManager(tmp_path / "outputs")
+    playback = ProbingPlayback()
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=playback,
+        output_manager=output_manager,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    assert manager.wait_for_active_task(timeout=1.0).output_path is not None
+
+    export_errors = []
+
+    def run_export():
+        try:
+            manager.export_current(str(tmp_path / "exports"))
+        except BaseException as exc:
+            export_errors.append(exc)
+
+    export_thread = Thread(target=run_export)
+    export_thread.start()
+    assert output_manager.export_started.wait(timeout=1.0)
+
+    pause_thread = Thread(target=manager.pause_session)
+    pause_thread.start()
+    try:
+        assert playback.pause_called.wait(timeout=1.0)
+    finally:
+        output_manager.release_export.set()
+        export_thread.join(timeout=1.0)
+        pause_thread.join(timeout=1.0)
+        manager.shutdown()
+
+    assert not export_thread.is_alive()
+    assert not pause_thread.is_alive()
+    assert export_errors == []
+
+
 def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
     class LockProbeHistoryStore(HistoryStore):
         def __init__(self, path):
