@@ -25,7 +25,7 @@ endpoint, commands run, generated output paths, and pass/fail notes.
 
 4. Pass criteria:
    - Python, config, cache, and outputs checks are `ok`.
-   - Any configured external service is either reachable or clearly reported as not running.
+   - Local Python, config, cache, outputs, optional-package, and playback-device checks are accurate; verify external ACE-Step availability separately by starting the service and using `lofi` to generate audio in Gate 3.
    - Optional ACE-Step/playback warnings match the selected test environment.
 
 ## Gate 2: Mock Mode Workflow

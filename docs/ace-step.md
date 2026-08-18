@@ -152,8 +152,9 @@ Run:
 lofi-doctor
 ```
 
-Use warnings about missing optional packages or an unavailable ACE-Step service to decide
-which extra to install or which service to start.
+Use warnings about missing optional packages and local Python, config, cache, outputs, and
+playback-device checks to prepare the environment. Verify external ACE-Step availability by
+starting the service and using `lofi` to run a generation.
 
 ## Acceptance
 
