@@ -1,4 +1,8 @@
 import json
+import os
+import subprocess
+import sys
+import textwrap
 import time
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -921,6 +925,67 @@ def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
         assert playback.commit_lock_free is True
     finally:
         manager.shutdown()
+
+
+def test_queued_future_cancellation_returns_and_discards_future():
+    script = textwrap.dedent(
+        """
+        import numpy as np
+        from threading import Event
+
+        from lofi_focus_tui.backend.session_manager import SessionManager
+        from lofi_focus_tui.domain import EnergyLevel, SessionRequest
+        from lofi_focus_tui.generation.base import GenerationResult
+
+        class BlockingModel:
+            name = "blocking"
+
+            def __init__(self):
+                self.started = Event()
+                self.release = Event()
+
+            def generate(self, blueprint, duration_seconds, settings=None):
+                self.started.set()
+                self.release.wait(timeout=5.0)
+                return GenerationResult(
+                    audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+                    sample_rate=44100,
+                    duration_seconds=duration_seconds,
+                    metadata={"session_id": blueprint.session_id, "backend": self.name},
+                )
+
+        request = SessionRequest(
+            preset="classic_lofi",
+            duration_minutes=5,
+            energy=EnergyLevel.STEADY,
+        )
+        model = BlockingModel()
+        manager = SessionManager(model=model, render_seconds_limit=1)
+        manager.start_session(request)
+        assert model.started.wait(timeout=1.0)
+        manager.start_session(request)
+        queued = manager._active_future
+        assert queued is not None
+        assert not queued.running()
+        manager.stop_session()
+        assert queued.cancelled()
+        assert queued not in manager._futures
+        model.release.set()
+        manager.shutdown()
+        """
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(f"queued future cancellation hung: {exc}")
+    assert result.returncode == 0, result.stderr
 
 
 def test_stop_session_rejects_closed_before_blocked_history_read(tmp_path):

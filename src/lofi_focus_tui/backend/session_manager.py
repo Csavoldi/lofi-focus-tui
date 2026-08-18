@@ -54,6 +54,7 @@ class SessionManager:
         self.history_store = history_store
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lofi-generation")
         self._lock = Lock()
+        self._futures_lock = Lock()
         self._playback_lock = Lock()
         self._commit_lock = Lock()
         self._history_lock = Lock()
@@ -117,7 +118,8 @@ class SessionManager:
                     settings,
                     device.backend,
                 )
-                self._futures.add(future)
+                with self._futures_lock:
+                    self._futures.add(future)
                 self._active_future = future
         future.add_done_callback(self._forget_future)
         return status
@@ -239,12 +241,12 @@ class SessionManager:
             except (CancelledError, TimeoutError):
                 pass
 
-        with self._lock:
+        with self._futures_lock:
             futures = tuple(self._futures)
         for future in futures:
             if not future.running() and not future.done():
                 future.cancel()
-        with self._lock:
+        with self._futures_lock:
             should_finalize = all(future.done() for future in self._futures)
         if should_finalize:
             self._finalize_resources()
@@ -759,7 +761,7 @@ class SessionManager:
         return not self._closed and self._status.active_task_id == task.task_id
 
     def _forget_future(self, future: Future[None]) -> None:
-        with self._lock:
+        with self._futures_lock:
             self._futures.discard(future)
 
     def _rollback_history_record(self, record: SessionRecord) -> None:
