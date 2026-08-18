@@ -55,6 +55,7 @@ class SessionManager:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lofi-generation")
         self._lock = Lock()
         self._playback_lock = Lock()
+        self._commit_lock = Lock()
         self._resource_lock = Lock()
         self._tasks: dict[str, GenerationTask] = {}
         self._futures: set[Future[None]] = set()
@@ -117,6 +118,7 @@ class SessionManager:
                 )
                 self._futures.add(future)
                 self._active_future = future
+        future.add_done_callback(self._forget_future)
         return status
 
     def wait_for_active_task(self, timeout: float = 5.0) -> BackendStatus:
@@ -564,63 +566,75 @@ class SessionManager:
         settings: GenerationSettings | None,
         device_backend: str,
     ) -> None:
-        with self._playback_lock:
+        with self._commit_lock:
             with self._lock:
                 if not self._is_active_task_locked(task):
                     return
+                output_manager = self.output_manager
                 output_path = self._output_path(result.metadata)
                 record = None
-                if self.output_manager is not None:
-                    output_path, _metadata_path, record = self._prepare_output_record(
-                        request=request,
-                        plan=plan,
-                        blueprint=blueprint,
-                        result=result,
-                        duration_seconds=duration_seconds,
-                        settings=settings,
-                        device_backend=device_backend,
-                    )
-                if not self._is_active_task_locked(task):
-                    return
-                self.playback.load(result)
-                if not self._is_active_task_locked(task):
-                    self.playback.stop()
-                    return
-                if record is not None and self.history_store is not None:
-                    self.history_store.append(record)
-                if not self._is_active_task_locked(task):
-                    self.playback.stop()
-                    return
-                task.output_path = output_path
-                playback_mode = self._playback_mode()
-                if playback_mode == "disabled":
-                    message = "generated; playback disabled"
-                elif getattr(self.playback, "last_error", None):
-                    message = "generated; playback fallback"
-                else:
-                    message = "playing"
-                if not self._is_active_task_locked(task):
-                    self.playback.stop()
-                    return
-                task.update(BackendState.PLAYING, message, 1.0)
-                self._status = BackendStatus(
-                    state=task.state,
-                    message=task.message,
-                    active_session_id=task.session_id,
-                    progress=task.progress,
-                    active_task_id=task.task_id,
-                    output_path=task.output_path,
-                    error=task.error,
-                    recent_sessions=self._recent_session_labels(),
-                    chunk_index=chunk_count,
-                    chunk_count=chunk_count,
-                    backend=self.model.name,
-                    device=device_backend,
-                    playback=playback_mode,
+            if output_manager is not None:
+                output_path, _metadata_path, record = self._prepare_output_record(
+                    output_manager=output_manager,
+                    request=request,
+                    plan=plan,
+                    blueprint=blueprint,
+                    result=result,
+                    duration_seconds=duration_seconds,
+                    settings=settings,
+                    device_backend=device_backend,
                 )
+            with self._playback_lock:
+                with self._lock:
+                    if not self._is_active_task_locked(task):
+                        return
+                    self.playback.load(result)
+                    if not self._is_active_task_locked(task):
+                        self.playback.stop()
+                        return
+            if record is not None and self.history_store is not None:
+                with self._playback_lock:
+                    with self._lock:
+                        if not self._is_active_task_locked(task):
+                            self.playback.stop()
+                            return
+                self.history_store.append(record)
+            with self._playback_lock:
+                with self._lock:
+                    if not self._is_active_task_locked(task):
+                        self.playback.stop()
+                        return
+                    task.output_path = output_path
+                    playback_mode = self._playback_mode()
+                    if playback_mode == "disabled":
+                        message = "generated; playback disabled"
+                    elif getattr(self.playback, "last_error", None):
+                        message = "generated; playback fallback"
+                    else:
+                        message = "playing"
+                    if not self._is_active_task_locked(task):
+                        self.playback.stop()
+                        return
+                    task.update(BackendState.PLAYING, message, 1.0)
+                    self._status = BackendStatus(
+                        state=task.state,
+                        message=task.message,
+                        active_session_id=task.session_id,
+                        progress=task.progress,
+                        active_task_id=task.task_id,
+                        output_path=task.output_path,
+                        error=task.error,
+                        recent_sessions=self._recent_session_labels(),
+                        chunk_index=chunk_count,
+                        chunk_count=chunk_count,
+                        backend=self.model.name,
+                        device=device_backend,
+                        playback=playback_mode,
+                    )
 
     def _prepare_output_record(
         self,
+        output_manager: OutputManager,
         request: SessionRequest,
         plan,
         blueprint,
@@ -629,8 +643,8 @@ class SessionManager:
         settings: GenerationSettings | None,
         device_backend: str,
     ) -> tuple[str, str, SessionRecord]:
-        directory = self.output_manager.create_session_dir(plan.session_id, plan.preset)
-        audio_path = self.output_manager.save_wav(result, directory)
+        directory = output_manager.create_session_dir(plan.session_id, plan.preset)
+        audio_path = output_manager.save_wav(result, directory)
         metadata = {
             "seed": plan.seed,
             "request": request.model_dump(mode="json"),
@@ -642,7 +656,7 @@ class SessionManager:
             "actual_duration_seconds": result.duration_seconds,
             "generation": result.metadata,
         }
-        metadata_path = self.output_manager.save_metadata(metadata, directory)
+        metadata_path = output_manager.save_metadata(metadata, directory)
         record = SessionRecord(
             session_id=plan.session_id,
             preset=plan.preset,
@@ -662,6 +676,10 @@ class SessionManager:
 
     def _is_active_task_locked(self, task: GenerationTask) -> bool:
         return not self._closed and self._status.active_task_id == task.task_id
+
+    def _forget_future(self, future: Future[None]) -> None:
+        with self._lock:
+            self._futures.discard(future)
 
     def _ensure_open(self) -> None:
         with self._lock:

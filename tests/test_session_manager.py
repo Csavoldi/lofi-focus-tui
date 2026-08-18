@@ -1,7 +1,7 @@
 import json
 import time
 from pathlib import Path
-from threading import Event, Lock
+from threading import Event, Lock, Thread
 
 import numpy as np
 import pytest
@@ -854,6 +854,67 @@ def test_export_releases_locks_before_copying(tmp_path):
 
     assert output_manager.lock_was_free is True
     assert output_manager.playback_lock_was_free is True
+
+
+def test_shutdown_does_not_wait_for_blocked_output_commit(tmp_path):
+    model = DelayedShutdownModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    save_started = Event()
+    release_save = Event()
+    original_save_wav = output_manager.save_wav
+
+    def blocked_save_wav(result, directory, filename="audio.wav"):
+        save_started.set()
+        release_save.wait()
+        return original_save_wav(result, directory, filename)
+
+    output_manager.save_wav = blocked_save_wav
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    model.release.set()
+    assert save_started.wait(timeout=1.0)
+
+    shutdown_errors = []
+
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+
+    shutdown_thread = Thread(
+        target=run_shutdown,
+        daemon=True,
+    )
+    started_at = time.monotonic()
+    shutdown_thread.start()
+    try:
+        shutdown_thread.join(timeout=2.3)
+        elapsed = time.monotonic() - started_at
+        assert not shutdown_thread.is_alive()
+        assert elapsed < 2.2
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+        assert history_store.list(limit=5) == []
+    finally:
+        release_save.set()
+        shutdown_thread.join(timeout=1.0)
+
+    manager.wait_for_active_task(timeout=1.0)
+    assert model.closed.is_set()
+    assert history_store.list(limit=5) == []
+    assert playback.loaded is None
+    assert manager.health().message == "closed"
 
 
 def test_health_reports_idle_closed_after_shutdown():
