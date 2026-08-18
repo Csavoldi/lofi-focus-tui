@@ -572,9 +572,11 @@ class SessionManager:
                     return
                 output_manager = self.output_manager
                 output_path = self._output_path(result.metadata)
+                metadata_path = None
                 record = None
             if output_manager is not None:
-                output_path, _metadata_path, record = self._prepare_output_record(
+                prepared = self._prepare_output_record(
+                    task=task,
                     output_manager=output_manager,
                     request=request,
                     plan=plan,
@@ -584,56 +586,71 @@ class SessionManager:
                     settings=settings,
                     device_backend=device_backend,
                 )
-            with self._playback_lock:
-                with self._lock:
-                    if not self._is_active_task_locked(task):
-                        return
-                    self.playback.load(result)
-                    if not self._is_active_task_locked(task):
-                        self.playback.stop()
-                        return
+                if prepared is None:
+                    return
+                output_path, metadata_path, record = prepared
+            history_appended = False
             if record is not None and self.history_store is not None:
-                with self._playback_lock:
-                    with self._lock:
-                        if not self._is_active_task_locked(task):
-                            self.playback.stop()
-                            return
-                self.history_store.append(record)
+                with self._lock:
+                    if not self._is_active_task_locked(task):
+                        should_drop = True
+                    else:
+                        should_drop = False
+                if should_drop:
+                    self._cleanup_output_artifacts(output_path, metadata_path)
+                    return
+                try:
+                    self.history_store.append(record)
+                    history_appended = True
+                except Exception:
+                    if not self._is_active_task(task):
+                        self._rollback_history_record(record)
+                    raise
+            should_drop = False
             with self._playback_lock:
                 with self._lock:
                     if not self._is_active_task_locked(task):
-                        self.playback.stop()
-                        return
-                    task.output_path = output_path
-                    playback_mode = self._playback_mode()
-                    if playback_mode == "disabled":
-                        message = "generated; playback disabled"
-                    elif getattr(self.playback, "last_error", None):
-                        message = "generated; playback fallback"
+                        should_drop = True
                     else:
-                        message = "playing"
-                    if not self._is_active_task_locked(task):
-                        self.playback.stop()
-                        return
-                    task.update(BackendState.PLAYING, message, 1.0)
-                    self._status = BackendStatus(
-                        state=task.state,
-                        message=task.message,
-                        active_session_id=task.session_id,
-                        progress=task.progress,
-                        active_task_id=task.task_id,
-                        output_path=task.output_path,
-                        error=task.error,
-                        recent_sessions=self._recent_session_labels(),
-                        chunk_index=chunk_count,
-                        chunk_count=chunk_count,
-                        backend=self.model.name,
-                        device=device_backend,
-                        playback=playback_mode,
-                    )
+                        self.playback.load(result)
+                        if not self._is_active_task_locked(task):
+                            should_drop = True
+                        else:
+                            task.output_path = output_path
+                            playback_mode = self._playback_mode()
+                            if playback_mode == "disabled":
+                                message = "generated; playback disabled"
+                            elif getattr(self.playback, "last_error", None):
+                                message = "generated; playback fallback"
+                            else:
+                                message = "playing"
+                            if not self._is_active_task_locked(task):
+                                should_drop = True
+                            else:
+                                task.update(BackendState.PLAYING, message, 1.0)
+                                self._status = BackendStatus(
+                                    state=task.state,
+                                    message=task.message,
+                                    active_session_id=task.session_id,
+                                    progress=task.progress,
+                                    active_task_id=task.task_id,
+                                    output_path=task.output_path,
+                                    error=task.error,
+                                    recent_sessions=self._recent_session_labels(),
+                                    chunk_index=chunk_count,
+                                    chunk_count=chunk_count,
+                                    backend=self.model.name,
+                                    device=device_backend,
+                                    playback=playback_mode,
+                                )
+            if should_drop:
+                if history_appended and record is not None:
+                    self._rollback_history_record(record)
+                self._cleanup_output_artifacts(output_path, metadata_path)
 
     def _prepare_output_record(
         self,
+        task: GenerationTask,
         output_manager: OutputManager,
         request: SessionRequest,
         plan,
@@ -642,9 +659,24 @@ class SessionManager:
         duration_seconds: int,
         settings: GenerationSettings | None,
         device_backend: str,
-    ) -> tuple[str, str, SessionRecord]:
+    ) -> tuple[str, str, SessionRecord] | None:
+        if not self._is_active_task(task):
+            return None
         directory = output_manager.create_session_dir(plan.session_id, plan.preset)
-        audio_path = output_manager.save_wav(result, directory)
+        audio_path = directory / "audio.wav"
+        metadata_path = directory / "metadata.json"
+        if not self._is_active_task(task):
+            self._cleanup_output_artifacts(audio_path, metadata_path)
+            return None
+        try:
+            audio_path = Path(output_manager.save_wav(result, directory))
+        except Exception:
+            if not self._is_active_task(task):
+                self._cleanup_output_artifacts(audio_path, metadata_path)
+            raise
+        if not self._is_active_task(task):
+            self._cleanup_output_artifacts(audio_path, metadata_path)
+            return None
         metadata = {
             "seed": plan.seed,
             "request": request.model_dump(mode="json"),
@@ -656,7 +688,18 @@ class SessionManager:
             "actual_duration_seconds": result.duration_seconds,
             "generation": result.metadata,
         }
-        metadata_path = output_manager.save_metadata(metadata, directory)
+        if not self._is_active_task(task):
+            self._cleanup_output_artifacts(audio_path, metadata_path)
+            return None
+        try:
+            metadata_path = Path(output_manager.save_metadata(metadata, directory))
+        except Exception:
+            if not self._is_active_task(task):
+                self._cleanup_output_artifacts(audio_path, metadata_path)
+            raise
+        if not self._is_active_task(task):
+            self._cleanup_output_artifacts(audio_path, metadata_path)
+            return None
         record = SessionRecord(
             session_id=plan.session_id,
             preset=plan.preset,
@@ -670,6 +713,23 @@ class SessionManager:
         )
         return str(audio_path), str(metadata_path), record
 
+    @staticmethod
+    def _cleanup_output_artifacts(
+        audio_path: str | Path | None,
+        metadata_path: str | Path | None,
+    ) -> None:
+        paths = [Path(path) for path in (metadata_path, audio_path) if path is not None]
+        for path in paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if paths:
+            try:
+                paths[0].parent.rmdir()
+            except OSError:
+                pass
+
     def _is_active_task(self, task: GenerationTask) -> bool:
         with self._lock:
             return self._is_active_task_locked(task)
@@ -680,6 +740,13 @@ class SessionManager:
     def _forget_future(self, future: Future[None]) -> None:
         with self._lock:
             self._futures.discard(future)
+
+    def _rollback_history_record(self, record: SessionRecord) -> None:
+        if self.history_store is not None:
+            records = self.history_store._read_records()
+            updated = [item for item in records if item.session_id != record.session_id]
+            if len(updated) != len(records):
+                self.history_store._write_records(updated)
 
     def _ensure_open(self) -> None:
         with self._lock:

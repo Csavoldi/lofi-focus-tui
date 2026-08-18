@@ -915,6 +915,61 @@ def test_shutdown_does_not_wait_for_blocked_output_commit(tmp_path):
     assert history_store.list(limit=5) == []
     assert playback.loaded is None
     assert manager.health().message == "closed"
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
+
+
+def test_shutdown_rolls_back_history_append_after_close(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.append_started = Event()
+            self.release_append = Event()
+
+        def append(self, record):
+            self.append_started.set()
+            self.release_append.wait()
+            super().append(record)
+
+    model = RecordingModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    assert history_store.append_started.wait(timeout=1.0)
+
+    shutdown_errors = []
+
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+
+    shutdown_thread = Thread(target=run_shutdown, daemon=True)
+    shutdown_thread.start()
+    try:
+        shutdown_thread.join(timeout=2.3)
+        assert not shutdown_thread.is_alive()
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+    finally:
+        history_store.release_append.set()
+        shutdown_thread.join(timeout=1.0)
+
+    manager.wait_for_active_task(timeout=1.0)
+    assert history_store.list(limit=5) == []
+    assert playback.loaded is None
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
 
 
 def test_health_reports_idle_closed_after_shutdown():
