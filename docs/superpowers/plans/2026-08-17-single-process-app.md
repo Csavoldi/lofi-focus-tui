@@ -94,8 +94,8 @@
   the app. Add a CLI test that monkeypatches config loading, runtime construction, and
   `LofiFocusApp.run()` to prove one exact `AppConfig` object reaches both the manager
   builder and app constructor. Add a slow fake export test that proves the Textual event
-  loop yields while `export_current()` runs in a worker thread, and a lifecycle test that
-  app unmount calls `session_manager.shutdown()`.
+  loop yields while `export_current()` runs in a worker thread. The app unmount hook and
+  lifecycle test are added with the real manager shutdown in Task 3.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail for the old seam.**
 
@@ -114,8 +114,8 @@
 
   Update `cli.main()` to call `load_config()` once, build the manager with
   `build_session_manager(config)`, instantiate `LofiFocusApp(session_manager=manager,
-  config=config)`, and run it. Add the app lifecycle hook that calls idempotent
-  `session_manager.shutdown()` when the TUI unmounts.
+  config=config)`, and run it. The app lifecycle hook is added with the real manager
+  shutdown in Task 3.
 
 - [ ] **Step 5: Move export copying off the event loop.**
 
@@ -143,8 +143,10 @@
 **Files:**
 - Modify: `src/lofi_focus_tui/backend/session_manager.py`
 - Modify: `src/lofi_focus_tui/generation/http_ace_step.py`
+- Modify: `src/lofi_focus_tui/tui/app.py`
 - Modify: `tests/test_session_manager.py`
 - Modify: `tests/test_http_ace_step.py`
+- Modify: `tests/test_tui_app.py`
 
 - [ ] **Step 1: Write failing lifecycle tests.**
 
@@ -159,7 +161,8 @@
     status, append history, or restart playback;
   - cleanup occurs only after the worker stops, both when it stops within the wait and when
     delayed cleanup is required;
-  - `AceStepHttpAdapter.close()` closes its owned HTTPX client exactly once.
+  - `AceStepHttpAdapter.close()` closes its owned HTTPX client exactly once;
+  - app unmount calls `session_manager.shutdown()`.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail.**
 
@@ -177,6 +180,8 @@
   the worker finalization path after worker termination, including the normal in-timeout
   path. Call `close()` only when `getattr(model, "close", None)` is callable; adapters
   without resources use the no-op path.
+  Add the TUI `on_unmount()` hook now that every runtime manager has the required
+  lifecycle method.
 
 - [ ] **Step 4: Guard every post-close generation commit.**
 
@@ -199,7 +204,7 @@
   Expected: all focused tests pass.
 
   ```bash
-  git add src/lofi_focus_tui/backend/session_manager.py src/lofi_focus_tui/generation/http_ace_step.py tests/test_session_manager.py tests/test_http_ace_step.py
+  git add src/lofi_focus_tui/backend/session_manager.py src/lofi_focus_tui/generation/http_ace_step.py src/lofi_focus_tui/tui/app.py tests/test_session_manager.py tests/test_http_ace_step.py tests/test_tui_app.py
   git commit -m "feat: add safe in-process session shutdown"
   ```
 
@@ -456,10 +461,11 @@
 
 - [ ] **Step 3: Verify the removed boundary and command surface.**
 
-  Run: `rg -n 'lofi-backend|create_app|BackendClient|ServerConfig|127\.0\.0\.1:8765' src tests README.md docs pyproject.toml`
+  Run: `rg -n 'lofi-backend|create_app|BackendClient|ServerConfig|\\b8765\\b' src tests README.md docs pyproject.toml --glob '!docs/superpowers/**'`
 
-  Expected: no active Lofi HTTP-boundary references. ACE-Step HTTP references and
-  `httpx` remain.
+  Expected: no active Lofi HTTP-boundary references or old `8765` variants. The
+  approved design/plan history is excluded; ACE-Step HTTP references and `httpx`
+  remain.
 
 - [ ] **Step 4: Run the manual smoke test.**
 
