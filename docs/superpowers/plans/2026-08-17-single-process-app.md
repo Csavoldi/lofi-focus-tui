@@ -33,8 +33,8 @@
 **Files:**
 - Create: `tests/test_runtime.py`
 - Create: `src/lofi_focus_tui/runtime.py`
-- Modify: `src/lofi_focus_tui/cli.py`
-- Test: `tests/test_backend_api.py` construction assertions to migrate into `tests/test_runtime.py`
+- Modify: `src/lofi_focus_tui/backend/api.py` with temporary construction-helper aliases
+- Test: `tests/test_backend_api.py` continues to exercise the temporary aliases until the API is deleted
 
 - [ ] **Step 1: Write the failing runtime-builder tests.**
 
@@ -54,25 +54,26 @@
 
   Implement `build_model(config)`, `build_playback(config)`, and
   `build_session_manager(config)` by moving the existing construction behavior from
-  `backend/api.py`. Keep `httpx`-backed ACE-Step construction unchanged.
+  `backend/api.py`. Update `backend/api.py` to import these helpers and temporarily expose
+  `_build_model`, `_build_playback`, and `_build_manager` aliases so existing API tests do
+  not break before the API is deleted. Keep `httpx`-backed ACE-Step construction unchanged.
 
-- [ ] **Step 4: Make the CLI own one config and one manager.**
+- [ ] **Step 4: Verify the temporary compatibility path.**
 
-  Update `cli.main()` to call `load_config()` once, build the manager, instantiate
-  `LofiFocusApp(session_manager=manager, config=config)`, and run it. Do not reload config
-  inside the app. Keep shutdown cleanup in the app lifecycle task for the next task.
+  Run the existing API construction tests and the new runtime tests together. The API
+  module still owns HTTP routes at this point, but its dependency construction must now
+  come from `runtime.py` without duplication.
 
 - [ ] **Step 5: Run the focused tests and confirm they pass.**
 
   Run: `PYTHONPATH=src pytest tests/test_runtime.py tests/test_backend_api.py -q`
 
-  Expected: runtime tests pass; remaining API tests may still fail until the HTTP boundary
-  is removed in Chunk 4.
+  Expected: all selected tests pass.
 
 - [ ] **Step 6: Commit the runtime seam.**
 
   ```bash
-  git add src/lofi_focus_tui/runtime.py src/lofi_focus_tui/cli.py tests/test_runtime.py
+  git add src/lofi_focus_tui/runtime.py src/lofi_focus_tui/backend/api.py tests/test_runtime.py
   git commit -m "refactor: build the app runtime in process"
   ```
 
@@ -80,7 +81,9 @@
 
 **Files:**
 - Modify: `src/lofi_focus_tui/tui/app.py`
+- Modify: `src/lofi_focus_tui/cli.py`
 - Modify: `tests/test_tui_app.py`
+- Modify: `tests/test_runtime.py`
 
 - [ ] **Step 1: Write failing direct-manager TUI tests.**
 
@@ -88,7 +91,9 @@
   `start_session`, pause/resume/stop, volume, seek, restart, and export methods. Test that
   mount reads manager status, session requests preserve prompt/vocal mode, controls call
   the manager directly, and the configured theme comes from the same `AppConfig` passed to
-  the app.
+  the app. Add a CLI test that monkeypatches config loading, runtime construction, and
+  `LofiFocusApp.run()` to prove one exact `AppConfig` object reaches both the manager
+  builder and app constructor.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail for the old seam.**
 
@@ -103,22 +108,30 @@
   `backend_client` call with its direct manager equivalent, keeping the existing async
   action methods for Textual compatibility. Remove `load_config()` from the app.
 
-- [ ] **Step 4: Move export copying off the event loop.**
+- [ ] **Step 4: Wire CLI startup and app shutdown.**
+
+  Update `cli.main()` to call `load_config()` once, build the manager with
+  `build_session_manager(config)`, instantiate `LofiFocusApp(session_manager=manager,
+  config=config)`, and run it. Add the app lifecycle hook that calls idempotent
+  `session_manager.shutdown()` when the TUI unmounts.
+
+- [ ] **Step 5: Move export copying off the event loop.**
 
   In `ExportScreen.on_input_submitted`, call `await asyncio.to_thread(
   self.app.session_manager.export_current, event.value)`. Preserve the current error text
   and success notification behavior. The manager implementation will release its locks
-  before copying in Task 3.
+  before copying in Task 4. Add a slow fake export test that proves the event loop yields;
+  the concurrent manager-lock test remains in Task 4.
 
-- [ ] **Step 5: Run the TUI tests and commit.**
+- [ ] **Step 6: Run the TUI/runtime tests and commit.**
 
-  Run: `PYTHONPATH=src pytest tests/test_tui_app.py -q`
+  Run: `PYTHONPATH=src pytest tests/test_tui_app.py tests/test_runtime.py -q`
 
   Expected: all TUI tests pass, including prompt focus, vocal mode, theme selection, and
   direct manager call assertions.
 
   ```bash
-  git add src/lofi_focus_tui/tui/app.py tests/test_tui_app.py
+  git add src/lofi_focus_tui/tui/app.py src/lofi_focus_tui/cli.py tests/test_tui_app.py tests/test_runtime.py
   git commit -m "refactor: connect the TUI to the local session manager"
   ```
 
