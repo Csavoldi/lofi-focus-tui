@@ -4,16 +4,16 @@ Session-first terminal UI for local AI-generated focus music.
 
 ![TUI generating with ACE-Step](docs/tui-preview.png)
 
-The TUI instructs a local backend. The backend owns planning, ACE-Step integration,
-device selection, continuity checks, playback state, and cache.
+The app owns planning, ACE-Step integration, device selection, continuity checks, playback
+state, and cache in one process.
 
 The normal default is ACE-Step over HTTP; mock mode is an explicit development fallback.
 
 ## Install and Run with ACE-Step
 
 This is the normal setup for Linux users who want real AI-generated focus music. You will
-use three terminal windows: one for ACE-Step, one for the Lofi backend, and one for the
-TUI.
+use two terminal windows: one for the separate ACE-Step HTTP service and one for the Lofi
+app.
 
 You need Python 3.11 or 3.12, Git, and [`uv`](https://docs.astral.sh/uv/). ACE-Step
 downloads its models the first time it starts, so the first launch may take a while.
@@ -42,9 +42,10 @@ python -m pip install -e ".[playback]"
 
 If you already have this repository, just `cd` into it and activate `.venv`.
 
-### 3. Start the three pieces
+### 3. Start ACE-Step and Lofi
 
-Keep each command running in its own terminal window.
+Keep each command running in its own terminal window. Port `8001` belongs only to the
+external ACE-Step HTTP service; the Lofi app does not open a separate service port.
 
 Terminal 1 — start the ACE-Step REST server:
 
@@ -60,15 +61,7 @@ terminal if needed:
 curl http://127.0.0.1:8001/health
 ```
 
-Terminal 2 — start the Lofi backend:
-
-```bash
-cd ~/Documents/lofi-focus-tui
-source .venv/bin/activate
-LOFI_BACKEND=ace-step-http lofi-backend
-```
-
-Terminal 3 — start the TUI:
+Terminal 2 — start the Lofi app:
 
 ```bash
 cd ~/Documents/lofi-focus-tui
@@ -76,14 +69,14 @@ source .venv/bin/activate
 lofi
 ```
 
-The TUI is ready when it shows `backend: ace-step-http` and `message: ready`. Press `s`
-to start a session. The first generation can take a few minutes.
+The app is ready when it shows `backend: ace-step-http` and `message: ready`. Press `s` to
+start a session. The first generation can take a few minutes.
 
 ### Use ACE-Step on another machine on your LAN
 
-The TUI talks to the Lofi backend on port `8765`; the backend talks to ACE-Step on port
-`8001`. If ACE-Step is hosted on another LAN machine, keep the Lofi backend and TUI local
-and point the backend at the ACE-Step machine's LAN IP.
+The Lofi app talks directly to the separate ACE-Step HTTP service on port `8001`. If
+ACE-Step is hosted on another LAN machine, run the Lofi app locally and point its
+ACE-Step URL at that machine's LAN IP.
 
 On the ACE-Step machine, bind the REST API to the LAN interface:
 
@@ -93,7 +86,7 @@ ACESTEP_API_HOST=0.0.0.0 ACESTEP_API_PORT=8001 uv run acestep-api
 ```
 
 Allow inbound TCP port `8001` through that machine's firewall, preferably only from the
-machine running `lofi-backend`. Do not expose the API directly to the public internet.
+machine running the Lofi app. Do not expose the API directly to the public internet.
 
 On the Lofi machine, create `config.toml` in the repository directory (or at
 `~/.config/lofi-focus-tui/config.toml`):
@@ -119,9 +112,8 @@ curl http://ACE_STEP_LAN_IP:8001/health
 curl http://ACE_STEP_LAN_IP:8001/v1/models
 ```
 
-Leave `[server] host = "127.0.0.1"` when the TUI and Lofi backend run on the same machine.
-If the TUI itself runs on a different machine, configure its `[server] host` as the Lofi
-backend machine's LAN IP and bind that backend to a LAN-reachable host as well.
+Run `lofi` on the Lofi machine after the ACE-Step service is available. The Lofi app itself
+does not need a host or port setting.
 
 ### TUI controls
 
@@ -156,11 +148,13 @@ export directory, and press Enter to copy the WAV and metadata there. The defaul
 
 ### If something goes wrong
 
-- **`backend: offline`**: make sure Terminal 2 is still running.
+- **`backend: offline`**: make sure the external ACE-Step service is still running and its
+  configured URL is reachable.
 - **ACE-Step health check fails**: make sure Terminal 1 is running the REST server on
   port `8001`. The Gradio web UI on port `7860` is a different server and is not enough.
-- **`address already in use`**: press `Ctrl-C` in the terminal running the old process,
-  then start it again. The Lofi backend uses port `8765`; ACE-Step uses port `8001`.
+- **`address already in use`**: press `Ctrl-C` in the terminal running the external
+  ACE-Step service, then start it again. Port `8001` is the ACE-Step service port; the Lofi
+  app does not open a separate service port.
 - **No sound**: the WAV is still saved. Confirm that your computer has an audio output
   device and that you installed the `[playback]` extra above.
 
@@ -187,20 +181,14 @@ pytest -v
 
 Mock mode does not require ACE-Step and is useful for development or troubleshooting.
 
-Start the backend:
+Start the app:
 
 ```bash
-LOFI_BACKEND=mock lofi-backend
+LOFI_BACKEND=mock lofi
 ```
 
-Start the terminal UI in a second terminal:
-
-```bash
-lofi
-```
-
-With the backend running, press `s` in the TUI to start a mock deep-work session.
-The TUI will update from `idle` to `playing` after the backend accepts the session.
+Press `s` in the TUI to start a mock deep-work session. The app will update from `idle` to
+`playing` after it accepts the session.
 
 Run diagnostics:
 
@@ -230,7 +218,8 @@ uv sync
 uv run acestep-api
 ```
 
-The API should listen on `http://127.0.0.1:8001`.
+The separate ACE-Step HTTP service should listen on `http://127.0.0.1:8001`. Port `8001`
+belongs only to that external service.
 
 In this repository, run the live UAT gate from a second terminal:
 
@@ -243,6 +232,13 @@ PowerShell:
 ```powershell
 $env:LOFI_UAT_ACE_STEP_BASE_URL = "http://127.0.0.1:8001"
 pytest tests/test_live_ace_step_http.py -v
+```
+
+For the installed app workflow, keep ACE-Step running and start the app from this
+repository in another terminal:
+
+```bash
+lofi
 ```
 
 Use the fake-pipeline tests for normal development. Run real ACE-Step generation only on a

@@ -25,25 +25,20 @@ endpoint, commands run, generated output paths, and pass/fail notes.
 
 4. Pass criteria:
    - Python, config, cache, and outputs checks are `ok`.
-   - Backend is either reachable or clearly reported as not running.
+   - Any configured external service is either reachable or clearly reported as not running.
    - Optional ACE-Step/playback warnings match the selected test environment.
 
 ## Gate 2: Mock Mode Workflow
 
-1. Ensure `generation.backend = "mock"` in `config.toml`, or set `LOFI_BACKEND=mock`.
-2. Start the backend:
+1. Ensure `generation.backend = "mock"` in `config.toml`, or use the explicit one-process
+   command below.
+2. Start the app:
 
    ```bash
-   lofi-backend
+   LOFI_BACKEND=mock lofi
    ```
 
-3. Start the TUI in a second terminal:
-
-   ```bash
-   lofi
-   ```
-
-4. Exercise the TUI:
+3. Exercise the TUI:
    - Change focus, music preset, duration, energy, and style.
    - Start a fresh run with `focus=coding`, `preset=ambient_tape`, `energy=steady`, and `style_tags=["rainy", "mellow"]`.
    - Verify `request.focus == "coding"`, `request.preset == "ambient_tape"`, `plan.focus == "coding"`, and `plan.preset == "ambient_tape"`.
@@ -61,7 +56,7 @@ endpoint, commands run, generated output paths, and pass/fail notes.
    - Pause, resume, stop, and refresh.
    - Confirm status, progress, playback mode, chunk status, and recent history are legible.
 
-5. Pass criteria:
+4. Pass criteria:
    - The app does not crash.
    - Status updates are understandable.
    - Saved output contains `audio.wav` and `metadata.json`.
@@ -94,6 +89,13 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/v1/models
 ```
 
+Port `8001` belongs only to the separate ACE-Step HTTP service. After it is ready, start
+the Lofi app in another terminal:
+
+```bash
+lofi
+```
+
 Example `config.toml`:
 
 ```toml
@@ -121,10 +123,8 @@ timeout_seconds = 1800.0
    pytest tests/test_live_ace_step_http.py -v
    ```
 
-2. Start `lofi-backend`.
-3. Start `lofi`.
-4. Cycle duration to `5 minutes`.
-5. Start a session.
+2. Cycle duration to `5 minutes`.
+3. Start a session.
 
 Pass criteria:
 - `tests/test_live_ace_step_http.py` passes and writes evidence under `.uat/ace-step-http/`.

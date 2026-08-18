@@ -1,6 +1,7 @@
 # ACE-Step
 
-ACE-Step HTTP is the default backend using `http://127.0.0.1:8001`; mock mode is an explicit
+ACE-Step HTTP is the default backend using the separate service at
+`http://127.0.0.1:8001`; port `8001` belongs only to that service. Mock mode is an explicit
 alternative for development and CI.
 
 ## ACE-Step-1.5 HTTP Mode
@@ -38,6 +39,12 @@ Verify directly:
 ```bash
 curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/v1/models
+```
+
+After the service is ready, run the Lofi app in another terminal:
+
+```bash
+lofi
 ```
 
 Configure this app:
@@ -145,7 +152,8 @@ Run:
 lofi-doctor
 ```
 
-Use warnings about missing optional packages or unavailable backend ports to decide which extra to install or which service to start.
+Use warnings about missing optional packages or an unavailable ACE-Step service to decide
+which extra to install or which service to start.
 
 ## Acceptance
 

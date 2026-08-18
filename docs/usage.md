@@ -14,20 +14,26 @@ python -m pip install -e ".[playback]"
 
 ## Start Mock Mode
 
-Start the backend:
+Start the app:
 
 ```bash
-LOFI_BACKEND=mock lofi-backend
+LOFI_BACKEND=mock lofi
 ```
 
-Start the TUI in a second terminal:
+Press `s` to start a session. Use `space` to pause or resume, `x` to stop, and `r` to refresh.
+The duration selector includes a 5-minute option for real-generation smoke tests.
+
+## Start ACE-Step HTTP Mode
+
+Start the separate ACE-Step HTTP service as described in [`docs/ace-step.md`](ace-step.md),
+then run the Lofi app from this repository:
 
 ```bash
 lofi
 ```
 
-Press `s` to start a session. Use `space` to pause or resume, `x` to stop, and `r` to refresh.
-The duration selector includes a 5-minute option for real-generation smoke tests.
+Port `8001` belongs only to the external ACE-Step service; the Lofi app runs in one process
+and does not need a separate service terminal.
 
 ## Session Controls
 
