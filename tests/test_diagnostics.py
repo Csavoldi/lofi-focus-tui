@@ -1,3 +1,4 @@
+from lofi_focus_tui.config import ServerConfig
 from lofi_focus_tui.diagnostics import DiagnosticCheck, format_diagnostics, run_diagnostics
 
 
@@ -36,6 +37,23 @@ def test_run_diagnostics_reports_failed_config(tmp_path):
 
     assert by_name["config"].status == "fail"
     assert by_name["backend"].status == "warn"
+
+
+def test_run_diagnostics_uses_standalone_server_fallback(tmp_path):
+    probed = []
+
+    checks = run_diagnostics(
+        config_path=tmp_path / "missing.toml",
+        cache_dir=tmp_path / "cache",
+        port_probe=lambda host, port: probed.append((host, port)) or True,
+        import_checker=lambda module: False,
+    )
+
+    server = ServerConfig()
+    assert probed == [(server.host, server.port)]
+    assert next(check for check in checks if check.name == "backend").message == (
+        f"reachable at {server.host}:{server.port}"
+    )
 
 
 def test_format_diagnostics_outputs_status_lines():

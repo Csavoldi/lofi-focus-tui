@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from lofi_focus_tui.audio.cache import default_cache_dir, default_output_dir
-from lofi_focus_tui.config import AppConfig, load_config
+from lofi_focus_tui.config import AppConfig, ServerConfig, load_config
 from lofi_focus_tui.devices import choose_device
 
 DiagnosticStatus = Literal["ok", "warn", "fail"]
@@ -39,12 +39,13 @@ def run_diagnostics(
     except Exception as exc:
         checks.append(DiagnosticCheck("config", "fail", str(exc)))
 
-    backend_ok = port_probe(config.server.host, config.server.port)
+    server = getattr(config, "server", ServerConfig())
+    backend_ok = port_probe(server.host, server.port)
     backend_status: DiagnosticStatus = "ok" if backend_ok else "warn"
     backend_message = (
-        f"reachable at {config.server.host}:{config.server.port}"
+        f"reachable at {server.host}:{server.port}"
         if backend_ok
-        else f"not reachable at {config.server.host}:{config.server.port}"
+        else f"not reachable at {server.host}:{server.port}"
     )
     checks.append(DiagnosticCheck("backend", backend_status, backend_message))
 
