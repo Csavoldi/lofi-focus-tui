@@ -1,11 +1,13 @@
+import asyncio
+
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
-from lofi_focus_tui.config import AppConfig, load_config
+from lofi_focus_tui.backend.session_manager import SessionManager
+from lofi_focus_tui.config import AppConfig
 from lofi_focus_tui.domain import BackendState, BackendStatus, EnergyLevel, SessionRequest
 from lofi_focus_tui.options import ENERGY_OPTIONS, FOCUS_OPTIONS, PRESET_OPTIONS, STYLE_OPTIONS
-from lofi_focus_tui.tui.backend_client import BackendClient
 from lofi_focus_tui.tui.themes import DEFAULT_THEME, THEMES, Theme
 from lofi_focus_tui.tui.widgets import (
     DURATIONS,
@@ -44,7 +46,9 @@ class ExportScreen(ModalScreen[None]):
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         try:
-            response = await self.app.backend_client.export_session(event.value)
+            response = await asyncio.to_thread(
+                self.app.session_manager.export_current, event.value
+            )
         except Exception as exc:
             self.query_one("#export-error", Static).update(str(exc))
             return
@@ -90,12 +94,12 @@ class LofiFocusApp(App[None]):
 
     def __init__(
         self,
-        backend_client: BackendClient | None = None,
-        config: AppConfig | None = None,
+        session_manager: SessionManager,
+        config: AppConfig,
     ) -> None:
         super().__init__()
-        self.backend_client = backend_client or BackendClient.from_config()
-        config = config or load_config()
+        self.session_manager = session_manager
+        self.config = config
         self.active_theme: Theme = THEMES.get(config.theme, THEMES[DEFAULT_THEME])
         self.status = BackendStatus(
             state="idle",
@@ -136,7 +140,7 @@ class LofiFocusApp(App[None]):
         self.set_focus(None)
 
     async def refresh_status(self) -> None:
-        self.status = await self.backend_client.get_status()
+        self.status = self.session_manager.health()
         self._refresh_display()
 
     def action_focus_prompt(self) -> None:
@@ -175,38 +179,38 @@ class LofiFocusApp(App[None]):
             vocal_mode=self.vocal_mode,
             avoid_tags=["vocals"] if self.vocal_mode == "instrumental" else [],
         )
-        self.status = await self.backend_client.start_session(request)
+        self.status = self.session_manager.start_session(request)
         self._refresh_display()
 
     async def action_toggle_pause(self) -> None:
         if self.status.state == BackendState.PAUSED:
-            self.status = await self.backend_client.resume_session()
+            self.status = self.session_manager.resume_session()
         else:
-            self.status = await self.backend_client.pause_session()
+            self.status = self.session_manager.pause_session()
         self._refresh_display()
 
     async def action_stop_session(self) -> None:
-        self.status = await self.backend_client.stop_session()
+        self.status = self.session_manager.stop_session()
         self._refresh_display()
 
     async def action_volume_down(self) -> None:
-        self.status = await self.backend_client.adjust_volume(-0.1)
+        self.status = self.session_manager.adjust_volume(-0.1)
         self._refresh_display()
 
     async def action_volume_up(self) -> None:
-        self.status = await self.backend_client.adjust_volume(0.1)
+        self.status = self.session_manager.adjust_volume(0.1)
         self._refresh_display()
 
     async def action_rewind(self) -> None:
-        self.status = await self.backend_client.seek(-10.0)
+        self.status = self.session_manager.seek_playback(-10.0)
         self._refresh_display()
 
     async def action_forward(self) -> None:
-        self.status = await self.backend_client.seek(10.0)
+        self.status = self.session_manager.seek_playback(10.0)
         self._refresh_display()
 
     async def action_restart(self) -> None:
-        self.status = await self.backend_client.restart()
+        self.status = self.session_manager.restart_playback()
         self._refresh_display()
 
     async def action_refresh_status(self) -> None:

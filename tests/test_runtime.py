@@ -1,3 +1,4 @@
+from lofi_focus_tui import cli
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
 from lofi_focus_tui.config import (
@@ -13,6 +14,37 @@ from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.history import HistoryStore
 from lofi_focus_tui.runtime import build_model, build_session_manager
+
+
+def test_cli_main_reuses_one_config_for_manager_and_app(monkeypatch):
+    config = AppConfig(theme="vhs")
+    manager = object()
+    seen = {}
+
+    class FakeApp:
+        def __init__(self, *, session_manager, config):
+            seen["app_manager"] = session_manager
+            seen["app_config"] = config
+
+        def run(self):
+            seen["ran"] = True
+
+    def fake_build_session_manager(passed_config):
+        seen["manager_config"] = passed_config
+        return manager
+
+    monkeypatch.setattr(cli, "load_config", lambda: config)
+    monkeypatch.setattr(cli, "build_session_manager", fake_build_session_manager)
+    monkeypatch.setattr(cli, "LofiFocusApp", FakeApp)
+
+    cli.main()
+
+    assert seen == {
+        "manager_config": config,
+        "app_manager": manager,
+        "app_config": config,
+        "ran": True,
+    }
 
 
 def test_build_session_manager_wires_configured_runtime(monkeypatch, tmp_path):
