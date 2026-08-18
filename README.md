@@ -95,13 +95,16 @@ ACESTEP_API_HOST=0.0.0.0 ACESTEP_API_PORT=8001 uv run acestep-api
 Allow inbound TCP port `8001` through that machine's firewall, preferably only from the
 machine running `lofi-backend`. Do not expose the API directly to the public internet.
 
-On the Lofi machine, create `config.toml` in the repository directory (or at
-`~/.config/lofi-focus-tui/config.toml`):
+On the Lofi machine, copy the example config into the repository directory (or to
+`~/.config/lofi-focus-tui/config.toml`) and edit it:
+
+```bash
+cp config.example.toml config.toml
+```
+
+Then point the `[ace_step_http]` section at the ACE-Step machine:
 
 ```toml
-[generation]
-backend = "ace-step-http"
-
 [ace_step_http]
 base_url = "http://ACE_STEP_LAN_IP:8001"
 api_key = ""
@@ -173,6 +176,21 @@ For advanced configuration and diagnostics, see [`docs/usage.md`](docs/usage.md)
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"
+```
+
+The app reads `config.toml` from the repository directory, then from
+`~/.config/lofi-focus-tui/config.toml`. Start from the committed example and edit it
+for your machine:
+
+```bash
+cp config.example.toml config.toml
+```
+
+`config.toml` is git-ignored, so your local settings (LAN IPs, API keys) stay out of
+the repository. For development without ACE-Step, set `backend = "mock"` in the
+`[generation]` section or run the backend with `LOFI_BACKEND=mock`.
+
+```bash
 pytest -v
 ```
 
