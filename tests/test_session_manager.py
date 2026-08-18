@@ -859,10 +859,8 @@ def test_export_releases_manager_locks_before_copy(tmp_path):
         output_manager=output_manager,
         render_seconds_limit=1,
     )
-    manager.start_session(make_request())
-    assert manager.wait_for_active_task(timeout=1.0).output_path is not None
-
     export_errors = []
+    playback_errors = []
 
     def run_export():
         try:
@@ -870,23 +868,37 @@ def test_export_releases_manager_locks_before_copy(tmp_path):
         except BaseException as exc:
             export_errors.append(exc)
 
-    export_thread = Thread(target=run_export)
-    export_thread.start()
-    assert output_manager.export_started.wait(timeout=1.0)
+    def run_pause():
+        try:
+            manager.pause_session()
+        except BaseException as exc:
+            playback_errors.append(exc)
 
-    pause_thread = Thread(target=manager.pause_session)
-    pause_thread.start()
+    export_thread = None
+    pause_thread = None
     try:
+        manager.start_session(make_request())
+        assert manager.wait_for_active_task(timeout=1.0).output_path is not None
+
+        export_thread = Thread(target=run_export)
+        export_thread.start()
+        assert output_manager.export_started.wait(timeout=1.0)
+
+        pause_thread = Thread(target=run_pause)
+        pause_thread.start()
         assert playback.pause_called.wait(timeout=1.0)
     finally:
         output_manager.release_export.set()
-        export_thread.join(timeout=1.0)
-        pause_thread.join(timeout=1.0)
+        if export_thread is not None and export_thread.ident is not None:
+            export_thread.join(timeout=1.0)
+        if pause_thread is not None and pause_thread.ident is not None:
+            pause_thread.join(timeout=1.0)
         manager.shutdown()
 
     assert not export_thread.is_alive()
     assert not pause_thread.is_alive()
     assert export_errors == []
+    assert playback_errors == []
 
 
 def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
