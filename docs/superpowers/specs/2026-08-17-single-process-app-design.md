@@ -70,11 +70,12 @@ new sessions and controls raise `RuntimeError("session manager is closed")`. `he
 returns an idle status with message `closed`, and export raises the same runtime error.
 `shutdown()` returns after the fixed two-second wait even if a worker is still running;
 the worker's finalization path performs delayed cleanup. Every post-close completion is
-discarded before it can update status, save a completed session, or restart playback.
-Repeated shutdown calls are no-ops. A quit-during-generation test must verify the closed
-state, cancellation request, playback stop, safe delayed cleanup, discarded late results,
-and post-close rejection. The ACE-Step HTTP adapter's `close()` closes its owned HTTPX
-client; adapters without resources may use a no-op cleanup path.
+discarded before it can call `OutputManager` to write audio or metadata, update status,
+save a completed session, or restart playback. A quit-during-generation test must verify
+the closed state, cancellation request, playback stop, safe delayed cleanup, discarded
+late results, absence of late output artifacts, and post-close rejection. The ACE-Step
+HTTP adapter's `close()` closes its owned HTTPX client; adapters without resources may
+use a no-op cleanup path.
 
 ## Code changes
 
@@ -166,6 +167,7 @@ Add or update tests to prove:
 - `LofiFocusApp` calls a supplied manager directly for status and controls;
 - generation remains asynchronous through the manager's worker;
 - quitting during generation shuts down the manager and playback cleanly;
+- late generation results create no audio or metadata artifacts after shutdown;
 - prompt and vocal-mode fields reach the manager unchanged;
 - export success and failure behavior remains intact;
 - export file I/O runs off the TUI event loop;
