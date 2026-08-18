@@ -336,33 +336,46 @@
 - Delete: `src/lofi_focus_tui/tui/backend_client.py`
 - Delete or replace: `tests/test_backend_api.py`
 - Delete or replace: `tests/test_backend_client.py`
+- Modify: `tests/test_project_metadata.py` with the command/dependency boundary test
 - Modify: `pyproject.toml`
 - Modify: `src/lofi_focus_tui/cli.py`
 
-- [ ] **Step 1: Migrate any remaining construction tests to `tests/test_runtime.py`.**
+- [ ] **Step 1: Write the failing package-surface test and migrate construction tests.**
 
   Preserve model-selection, playback-selection, and manager-construction coverage without
-  importing FastAPI, ASGI transports, or the removed client.
+  importing FastAPI, ASGI transports, or the removed client. Add a structural test that
+  expects only `lofi` and `lofi-doctor` console scripts, no FastAPI/Uvicorn dependencies,
+  retained `httpx`, and absent `backend/api.py` and `tui/backend_client.py` files.
 
-- [ ] **Step 2: Remove obsolete package entry points and dependencies.**
+- [ ] **Step 2: Run the red-phase structural and migrated tests.**
+
+  Run: `PYTHONPATH=src pytest tests/test_project_metadata.py tests/test_runtime.py -q`
+
+  Expected: the structural test fails because the old entry point, dependencies, and
+  boundary files still exist; runtime tests pass.
+
+- [ ] **Step 3: Remove obsolete package entry points and dependencies.**
 
   Delete the `lofi-backend` script and remove `fastapi` and `uvicorn` from dependencies.
   Keep `httpx` for `AceStepHttpAdapter` and keep all other runtime dependencies.
 
-- [ ] **Step 3: Delete the API and client modules and clean imports.**
+- [ ] **Step 4: Delete the API and client modules and clean imports.**
 
   Use `rg -n 'create_app|BackendClient|lofi-backend|fastapi|uvicorn|ServerConfig' src tests`
   and remove every remaining Lofi HTTP-boundary import or reference. Do not remove the
   ACE-Step HTTP adapter or its HTTPX calls.
 
-- [ ] **Step 4: Run the package/import tests and commit.**
+- [ ] **Step 5: Run the package/import tests and commit.**
 
-  Run: `PYTHONPATH=src pytest tests/test_runtime.py tests/test_tui_app.py tests/test_config.py tests/test_diagnostics.py -q`
+  Run: `PYTHONPATH=src pytest tests/test_project_metadata.py tests/test_runtime.py tests/test_tui_app.py tests/test_config.py tests/test_diagnostics.py -q`
 
-  Expected: all direct-runtime tests pass and no removed entry point/import remains.
+  Expected: all direct-runtime tests pass, the structural package-surface test passes, and
+  no removed entry point/import remains. Verify `pyproject.toml` directly for the `lofi`
+  and `lofi-doctor` scripts, absent `lofi-backend`, absent FastAPI/Uvicorn, and retained
+  HTTPX.
 
   ```bash
-  git add pyproject.toml src tests
+  git add pyproject.toml src/lofi_focus_tui/backend/api.py src/lofi_focus_tui/tui/backend_client.py src/lofi_focus_tui/runtime.py src/lofi_focus_tui/cli.py tests/test_backend_api.py tests/test_backend_client.py tests/test_project_metadata.py tests/test_runtime.py tests/test_tui_app.py tests/test_config.py tests/test_diagnostics.py
   git commit -m "refactor: remove the local Lofi HTTP boundary"
   ```
 
@@ -392,11 +405,11 @@
   Run:
 
   ```bash
-  rg -n 'lofi-backend|port `?8765|\[server\]' README.md docs/usage.md docs/configuration.md docs/ace-step.md docs/user-acceptance-testing.md
+  ! rg -n 'lofi-backend|8765|\[server\]' README.md docs/usage.md docs/configuration.md docs/ace-step.md docs/user-acceptance-testing.md
   ```
 
-  Expected: no obsolete Lofi backend instructions remain; ACE-Step port `8001` references
-  remain where relevant.
+  Expected: no matches (exit code 0 because the search is inverted); ACE-Step port `8001`
+  references remain where relevant.
 
 - [ ] **Step 4: Commit the documentation migration.**
 
