@@ -56,6 +56,7 @@ class SessionManager:
         self._lock = Lock()
         self._playback_lock = Lock()
         self._commit_lock = Lock()
+        self._history_lock = Lock()
         self._resource_lock = Lock()
         self._tasks: dict[str, GenerationTask] = {}
         self._futures: set[Future[None]] = set()
@@ -600,63 +601,74 @@ class SessionManager:
                 self._cleanup_output_artifacts(output_path, metadata_path)
                 return
             try:
-                self.history_store.append(record)
+                with self._history_lock:
+                    self.history_store.append(record)
                 history_appended = True
             except Exception:
-                if not self._is_active_task(task):
-                    self._rollback_history_record(record)
-                    self._cleanup_output_artifacts(output_path, metadata_path)
+                self._try_rollback_history_record(record)
+                self._cleanup_output_artifacts(output_path, metadata_path)
                 raise
             if not self._is_active_task(task):
-                self._rollback_history_record(record)
+                self._try_rollback_history_record(record)
                 self._cleanup_output_artifacts(output_path, metadata_path)
                 return
-            recent_sessions = self._recent_session_labels()
+            try:
+                recent_sessions = self._recent_session_labels()
+            except Exception:
+                self._try_rollback_history_record(record)
+                self._cleanup_output_artifacts(output_path, metadata_path)
+                raise
 
         should_drop = False
-        with self._playback_lock:
-            with self._lock:
-                if not self._is_active_task_locked(task):
-                    should_drop = True
-                else:
-                    self.playback.load(result)
+        try:
+            with self._playback_lock:
+                with self._lock:
                     if not self._is_active_task_locked(task):
                         should_drop = True
                     else:
-                        task.output_path = output_path
-                        playback_mode = self._playback_mode()
-                        if playback_mode == "disabled":
-                            message = "generated; playback disabled"
-                        elif getattr(self.playback, "last_error", None):
-                            message = "generated; playback fallback"
-                        else:
-                            message = "playing"
+                        self.playback.load(result)
                         if not self._is_active_task_locked(task):
                             should_drop = True
                         else:
-                            task.update(BackendState.PLAYING, message, 1.0)
-                            self._status = BackendStatus(
-                                state=task.state,
-                                message=task.message,
-                                active_session_id=task.session_id,
-                                progress=task.progress,
-                                active_task_id=task.task_id,
-                                output_path=task.output_path,
-                                error=task.error,
-                                recent_sessions=list(
-                                    recent_sessions
-                                    if recent_sessions is not None
-                                    else self._status.recent_sessions
-                                ),
-                                chunk_index=chunk_count,
-                                chunk_count=chunk_count,
-                                backend=self.model.name,
-                                device=device_backend,
-                                playback=playback_mode,
-                            )
+                            task.output_path = output_path
+                            playback_mode = self._playback_mode()
+                            if playback_mode == "disabled":
+                                message = "generated; playback disabled"
+                            elif getattr(self.playback, "last_error", None):
+                                message = "generated; playback fallback"
+                            else:
+                                message = "playing"
+                            if not self._is_active_task_locked(task):
+                                should_drop = True
+                            else:
+                                task.update(BackendState.PLAYING, message, 1.0)
+                                self._status = BackendStatus(
+                                    state=task.state,
+                                    message=task.message,
+                                    active_session_id=task.session_id,
+                                    progress=task.progress,
+                                    active_task_id=task.task_id,
+                                    output_path=task.output_path,
+                                    error=task.error,
+                                    recent_sessions=list(
+                                        recent_sessions
+                                        if recent_sessions is not None
+                                        else self._status.recent_sessions
+                                    ),
+                                    chunk_index=chunk_count,
+                                    chunk_count=chunk_count,
+                                    backend=self.model.name,
+                                    device=device_backend,
+                                    playback=playback_mode,
+                                )
+        except Exception:
+            if history_appended and record is not None:
+                self._try_rollback_history_record(record)
+            self._cleanup_output_artifacts(output_path, metadata_path)
+            raise
         if should_drop:
             if history_appended and record is not None:
-                self._rollback_history_record(record)
+                self._try_rollback_history_record(record)
             self._cleanup_output_artifacts(output_path, metadata_path)
 
     def _prepare_output_record(
@@ -752,10 +764,11 @@ class SessionManager:
 
     def _rollback_history_record(self, record: SessionRecord) -> None:
         if self.history_store is not None:
-            records = self.history_store._read_records()
-            updated = [item for item in records if item.session_id != record.session_id]
-            if len(updated) != len(records):
-                self.history_store._write_records(updated)
+            with self._history_lock:
+                records = self.history_store._read_records()
+                updated = [item for item in records if item.session_id != record.session_id]
+                if len(updated) != len(records):
+                    self.history_store._write_records(updated)
         with self._lock:
             closed = self._closed
         if not closed:
@@ -766,6 +779,12 @@ class SessionManager:
                 self._status = self._status.model_copy(
                     update={"recent_sessions": recent_sessions}
                 )
+
+    def _try_rollback_history_record(self, record: SessionRecord) -> None:
+        try:
+            self._rollback_history_record(record)
+        except Exception:
+            pass
 
     def _ensure_open(self) -> None:
         with self._lock:
@@ -791,7 +810,9 @@ class SessionManager:
         if self.history_store is None:
             return []
         labels = []
-        for record in self.history_store.list(limit=5):
+        with self._history_lock:
+            records = self.history_store.list(limit=5)
+        for record in records:
             favorite = " *" if record.favorite else ""
             labels.append(f"{record.session_id[:8]} {record.preset}{favorite}")
         return labels

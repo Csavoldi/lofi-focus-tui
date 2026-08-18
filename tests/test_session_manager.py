@@ -860,6 +860,7 @@ def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
             super().__init__(path)
             self.manager = None
             self.commit_lock_free = []
+            self.history_lock_held = []
 
         def _probe_commit_lock(self):
             acquired = self.manager._commit_lock.acquire(blocking=False)
@@ -867,13 +868,21 @@ def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
             if acquired:
                 self.manager._commit_lock.release()
 
+        def _probe_history_lock(self):
+            acquired = self.manager._history_lock.acquire(blocking=False)
+            self.history_lock_held.append(not acquired)
+            if acquired:
+                self.manager._history_lock.release()
+
         def append(self, record):
             self._probe_commit_lock()
+            self._probe_history_lock()
             super().append(record)
 
         def list(self, limit=20):
             if self.manager is not None:
                 self._probe_commit_lock()
+                self._probe_history_lock()
             return super().list(limit=limit)
 
     class ProbingPlayback(RecordingPlayback):
@@ -907,6 +916,8 @@ def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
         assert status.state == BackendState.PLAYING
         assert history_store.commit_lock_free
         assert all(history_store.commit_lock_free)
+        assert history_store.history_lock_held
+        assert all(history_store.history_lock_held)
         assert playback.commit_lock_free is True
     finally:
         manager.shutdown()
@@ -977,6 +988,56 @@ def test_active_output_write_failure_cleans_partial_artifacts(tmp_path, failure)
     try:
         status = manager.wait_for_active_task(timeout=1.0)
         assert status.state == BackendState.ERROR
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
+def test_history_append_failure_cleans_record_and_artifacts(tmp_path):
+    class FailingHistoryStore(HistoryStore):
+        def append(self, record):
+            super().append(record)
+            raise OSError("history append failed")
+
+    history_store = FailingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=RecordingModel(),
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert history_store.list(limit=5) == []
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
+def test_playback_failure_rolls_back_record_and_artifacts(tmp_path):
+    class FailingPlayback(RecordingPlayback):
+        def load(self, result):
+            raise OSError("playback load failed")
+
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=FailingPlayback(),
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert history_store.list(limit=5) == []
         assert not list((tmp_path / "outputs").rglob("audio.wav"))
         assert not list((tmp_path / "outputs").rglob("metadata.json"))
         assert list((tmp_path / "outputs").iterdir()) == []
