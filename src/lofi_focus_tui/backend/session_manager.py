@@ -176,14 +176,15 @@ class SessionManager:
         with self._playback_lock:
             with self._lock:
                 self._ensure_open_locked()
-                if self.output_manager is None:
+                output_manager = self.output_manager
+                if output_manager is None:
                     raise RuntimeError("no completed audio session to export")
                 output_path = self._status.output_path
                 if output_path is None:
                     raise RuntimeError("no completed audio session to export")
-                audio_path, metadata_path = self.output_manager.export_session(
-                    Path(output_path), Path(directory)
-                )
+        audio_path, metadata_path = output_manager.export_session(
+            Path(output_path), Path(directory)
+        )
         return ExportResponse(
             message="session exported",
             audio_path=str(audio_path),

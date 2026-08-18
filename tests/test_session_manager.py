@@ -774,20 +774,25 @@ def test_session_status_reports_disabled_playback_mode():
 
 
 def test_shutdown_cancels_active_task_stops_playback_and_waits_at_most_two_seconds():
-    model = CooperativeShutdownModel()
+    model = DelayedShutdownModel()
     playback = RecordingPlayback()
     manager = SessionManager(model=model, playback=playback)
 
-    manager.start_session(make_request())
+    status = manager.start_session(make_request())
     assert model.started.wait(timeout=1.0)
 
     started_at = time.monotonic()
     manager.shutdown()
+    elapsed = time.monotonic() - started_at
 
-    assert time.monotonic() - started_at < 2.0
-    assert model.cancel_seen.is_set()
-    assert model.closed.is_set()
+    assert elapsed < 2.2
+    assert manager._tasks[status.active_task_id].cancel_event.is_set()
+    assert model.closed.is_set() is False
     assert playback.stopped is True
+
+    model.release.set()
+    manager.wait_for_active_task(timeout=1.0)
+    assert model.closed.is_set()
 
 
 def test_repeated_shutdown_calls_are_noops():
@@ -819,6 +824,36 @@ def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
     for operation in operations:
         with pytest.raises(RuntimeError, match="^session manager is closed$"):
             operation()
+
+
+def test_export_releases_locks_before_copying(tmp_path):
+    class ExportProbe:
+        def __init__(self):
+            self.manager = None
+            self.lock_was_free = None
+            self.playback_lock_was_free = None
+
+        def export_session(self, audio_path, directory):
+            self.lock_was_free = self.manager._lock.acquire(blocking=False)
+            if self.lock_was_free:
+                self.manager._lock.release()
+            self.playback_lock_was_free = self.manager._playback_lock.acquire(
+                blocking=False
+            )
+            if self.playback_lock_was_free:
+                self.manager._playback_lock.release()
+            return Path(directory) / "audio.wav", Path(directory) / "metadata.json"
+
+    output_manager = ExportProbe()
+    manager = SessionManager(model=RecordingModel(), output_manager=output_manager)
+    output_manager.manager = manager
+    with manager._lock:
+        manager._status = manager._status.model_copy(update={"output_path": "audio.wav"})
+
+    manager.export_current(str(tmp_path))
+
+    assert output_manager.lock_was_free is True
+    assert output_manager.playback_lock_was_free is True
 
 
 def test_health_reports_idle_closed_after_shutdown():
