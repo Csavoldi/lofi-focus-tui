@@ -25,7 +25,7 @@ endpoint, commands run, generated output paths, and pass/fail notes.
 
 4. Pass criteria:
    - Python, config, cache, and outputs checks are `ok`.
-   - Local Python, config, cache, outputs, optional-package, and playback-device checks are accurate; verify external ACE-Step availability separately by starting the service and using `lofi` to generate audio in Gate 3.
+   - Local Python, config, cache, outputs, compute-device selection, and optional ACE-Step/sounddevice availability checks are accurate; verify external ACE-Step availability separately by starting the service and using `lofi` to generate audio in Gate 3.
    - Optional ACE-Step/playback warnings match the selected test environment.
 
 ## Gate 2: Mock Mode Workflow
@@ -89,14 +89,7 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/v1/models
 ```
 
-Port `8001` belongs only to the separate ACE-Step HTTP service. After it is ready, start
-the Lofi app in another terminal:
-
-```bash
-lofi
-```
-
-Example `config.toml`:
+Create `config.toml` in the Lofi repository before starting the app:
 
 ```toml
 [generation]
@@ -108,6 +101,13 @@ batch_size = 1
 [ace_step_http]
 base_url = "http://127.0.0.1:8001"
 timeout_seconds = 1800.0
+```
+
+Port `8001` belongs only to the separate ACE-Step HTTP service. After the service is ready
+and the config is created, start the Lofi app in another terminal:
+
+```bash
+lofi
 ```
 
 1. Run the direct live gate:

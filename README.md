@@ -148,8 +148,6 @@ export directory, and press Enter to copy the WAV and metadata there. The defaul
 
 ### If something goes wrong
 
-- **`backend: offline`**: make sure the external ACE-Step service is still running and its
-  configured URL is reachable.
 - **ACE-Step health check fails**: make sure Terminal 1 is running the REST server on
   port `8001`. The Gradio web UI on port `7860` is a different server and is not enough.
 - **`address already in use`**: press `Ctrl-C` in the terminal running the external
