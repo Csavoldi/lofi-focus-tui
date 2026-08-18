@@ -59,10 +59,14 @@ itself is a separate concern and is not part of this work.
    unchanged.
 
 When the app unmounts or quits, it calls an idempotent manager shutdown method. Shutdown
-requests cancellation through the existing task mechanism, stops playback, and shuts down
-the manager's executor without leaving a worker-owned resource behind. A quit-during-
-generation test must verify that the application exits cleanly and does not leave active
-playback or an unclosed executor.
+marks the manager closed so new sessions are rejected, requests cooperative cancellation
+through the existing task mechanism, stops playback, and closes the model adapter when it
+exposes `close()`. It waits for the active future for a bounded short timeout, then calls
+executor shutdown with pending futures cancelled and does not wait indefinitely for a
+non-cooperative adapter. A quit-during-generation test must verify that the application
+exits cleanly, rejects later submissions, and does not leave active playback or an
+unclosed model client. The ACE-Step HTTP adapter's `close()` closes its owned HTTPX
+client; adapters without resources may use a no-op cleanup path.
 
 ## Code changes
 
@@ -73,7 +77,10 @@ The TUI keeps its current async action methods, but their bodies call fast synch
 manager methods directly. The manager's worker thread continues to handle generation.
 
 The export screen will preserve its current user-facing error behavior by catching
-manager export errors rather than HTTP errors.
+manager export errors rather than HTTP errors. Because `export_current()` copies files
+synchronously, the TUI will invoke it with `asyncio.to_thread` so export I/O does not block
+the Textual event loop. A test will use a deliberately slow export manager and verify that
+the handler yields while the copy is in progress.
 
 ### Runtime construction
 
@@ -150,6 +157,7 @@ Add or update tests to prove:
 - quitting during generation shuts down the manager and playback cleanly;
 - prompt and vocal-mode fields reach the manager unchanged;
 - export success and failure behavior remains intact;
+- export file I/O runs off the TUI event loop;
 - the package exposes `lofi` and `lofi-doctor`, but no `lofi-backend` command;
 - diagnostics no longer depends on port `8765`;
 - a legacy TOML file containing `[server]` still loads while no active server config is used;
