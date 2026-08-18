@@ -339,6 +339,7 @@
 - Modify: `tests/test_project_metadata.py` with the command/dependency boundary test
 - Modify: `pyproject.toml`
 - Modify: `src/lofi_focus_tui/cli.py`
+- Modify: `src/lofi_focus_tui/config.py` to remove the temporary `ServerConfig` type
 
 - [ ] **Step 1: Write the failing package-surface test and migrate construction tests.**
 
@@ -363,7 +364,8 @@
 
   Use `rg -n 'create_app|BackendClient|lofi-backend|fastapi|uvicorn|ServerConfig' src tests`
   and remove every remaining Lofi HTTP-boundary import or reference. Do not remove the
-  ACE-Step HTTP adapter or its HTTPX calls.
+  ACE-Step HTTP adapter or its HTTPX calls. Remove the temporary `ServerConfig` type from
+  `config.py` now that the compatibility API/client files are deleted.
 
 - [ ] **Step 5: Run the package/import tests and commit.**
 
@@ -375,7 +377,7 @@
   HTTPX.
 
   ```bash
-  git add pyproject.toml src/lofi_focus_tui/backend/api.py src/lofi_focus_tui/tui/backend_client.py src/lofi_focus_tui/runtime.py src/lofi_focus_tui/cli.py tests/test_backend_api.py tests/test_backend_client.py tests/test_project_metadata.py tests/test_runtime.py tests/test_tui_app.py tests/test_config.py tests/test_diagnostics.py
+  git add pyproject.toml src/lofi_focus_tui/config.py src/lofi_focus_tui/backend/api.py src/lofi_focus_tui/tui/backend_client.py src/lofi_focus_tui/runtime.py src/lofi_focus_tui/cli.py tests/test_backend_api.py tests/test_backend_client.py tests/test_project_metadata.py tests/test_runtime.py tests/test_tui_app.py tests/test_config.py tests/test_diagnostics.py
   git commit -m "refactor: remove the local Lofi HTTP boundary"
   ```
 
@@ -410,6 +412,16 @@
 
   Expected: no matches (exit code 0 because the search is inverted); ACE-Step port `8001`
   references remain where relevant.
+
+  Run:
+
+  ```bash
+  rg -n 'LOFI_BACKEND=mock lofi' README.md docs/usage.md docs/user-acceptance-testing.md
+  rg -n '8001' README.md docs/ace-step.md docs/user-acceptance-testing.md
+  ```
+
+  Expected: both searches find the new one-process mock command and the retained external
+  ACE-Step HTTP workflow.
 
 - [ ] **Step 4: Commit the documentation migration.**
 
