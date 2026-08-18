@@ -502,3 +502,42 @@ def test_http_adapter_stops_polling_when_generation_is_cancelled():
         adapter.generate(make_blueprint(), duration_seconds=1, cancel_event=cancel_event)
 
     assert query_count == 1
+
+
+def test_http_adapter_closes_owned_client_exactly_once(monkeypatch):
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200)),
+    )
+    original_close = adapter.client.close
+    close_calls = 0
+
+    def close_once():
+        nonlocal close_calls
+        close_calls += 1
+        original_close()
+
+    monkeypatch.setattr(adapter.client, "close", close_once)
+
+    adapter.close()
+    adapter.close()
+
+    assert close_calls == 1
+    assert adapter.client.is_closed
+
+
+def test_http_adapter_does_not_close_injected_client():
+    class InjectedClient:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    client = InjectedClient()
+    adapter = AceStepHttpAdapter(client=client)
+
+    adapter.close()
+    adapter.close()
+
+    assert client.close_calls == 0

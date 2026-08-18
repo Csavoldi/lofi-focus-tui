@@ -208,6 +208,7 @@ class FakeSessionManager:
         self.export_release = None
         self.export_thread_ids = []
         self.status_calls = 0
+        self.shutdown_called = False
         self.requests = []
         self.statuses = [
             BackendStatus(state="idle", message="ready", backend="mock", device="cpu")
@@ -218,6 +219,9 @@ class FakeSessionManager:
         if len(self.statuses) > 1:
             return self.statuses.pop(0)
         return self.statuses[0]
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
 
     def start_session(self, request):
         self.started = True
@@ -268,6 +272,16 @@ class FakeSessionManager:
             audio_path=f"{directory}/audio.wav",
             metadata_path=f"{directory}/metadata.json",
         )
+
+
+@pytest.mark.asyncio
+async def test_tui_unmount_shuts_down_session_manager():
+    session_manager = FakeSessionManager()
+    app = LofiFocusApp(session_manager=session_manager, config=AppConfig())
+
+    await app.on_unmount()
+
+    assert session_manager.shutdown_called is True
 
 
 @pytest.mark.asyncio

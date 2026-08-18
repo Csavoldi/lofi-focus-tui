@@ -1,8 +1,10 @@
 import json
+import time
 from pathlib import Path
 from threading import Event, Lock
 
 import numpy as np
+import pytest
 
 from lofi_focus_tui import composition
 from lofi_focus_tui.audio.output import OutputManager
@@ -50,6 +52,49 @@ class BlockingRecordingModel:
                 "output_path": f"{blueprint.session_id}.wav",
             },
         )
+
+
+class CooperativeShutdownModel:
+    name = "cooperative-shutdown"
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.cancel_seen = Event()
+        self.closed = Event()
+        self.close_calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None, cancel_event=None):
+        self.started.set()
+        assert cancel_event is not None
+        cancel_event.wait(timeout=2.5)
+        self.cancel_seen.set()
+        raise GenerationCancelledError("generation cancelled")
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self.closed.set()
+
+
+class DelayedShutdownModel:
+    name = "delayed-shutdown"
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.release = Event()
+        self.closed = Event()
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.started.set()
+        self.release.wait()
+        return GenerationResult(
+            audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+            sample_rate=44100,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+    def close(self) -> None:
+        self.closed.set()
 
 
 def test_start_session_returns_generating_before_generation_finishes():
@@ -726,3 +771,119 @@ def test_session_status_reports_disabled_playback_mode():
 
     assert final_status.playback == "disabled"
     assert final_status.message == "generated; playback disabled"
+
+
+def test_shutdown_cancels_active_task_stops_playback_and_waits_at_most_two_seconds():
+    model = CooperativeShutdownModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(model=model, playback=playback)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+
+    started_at = time.monotonic()
+    manager.shutdown()
+
+    assert time.monotonic() - started_at < 2.0
+    assert model.cancel_seen.is_set()
+    assert model.closed.is_set()
+    assert playback.stopped is True
+
+
+def test_repeated_shutdown_calls_are_noops():
+    model = CooperativeShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+    manager.shutdown()
+
+    assert model.close_calls == 1
+
+
+def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
+    manager = SessionManager(model=RecordingModel())
+    manager.shutdown()
+
+    operations = (
+        lambda: manager.start_session(make_request()),
+        manager.pause_session,
+        manager.resume_session,
+        lambda: manager.adjust_volume(0.1),
+        lambda: manager.seek_playback(1.0),
+        manager.restart_playback,
+        manager.stop_session,
+        lambda: manager.export_current(str(tmp_path)),
+    )
+    for operation in operations:
+        with pytest.raises(RuntimeError, match="^session manager is closed$"):
+            operation()
+
+
+def test_health_reports_idle_closed_after_shutdown():
+    manager = SessionManager(model=RecordingModel())
+
+    manager.shutdown()
+
+    status = manager.health()
+    assert status.state == BackendState.IDLE
+    assert status.message == "closed"
+    assert status.active_task_id is None
+
+
+def test_blocked_worker_late_result_does_not_commit_or_restart_playback(tmp_path):
+    model = DelayedShutdownModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    status = manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+    assert model.closed.is_set() is False
+
+    model.release.set()
+    manager.wait_for_active_task()
+
+    task = manager._tasks[status.active_task_id]
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
+    assert history_store.list(limit=5) == []
+    assert task.output_path is None
+    assert playback.loaded is None
+    assert manager.health().message == "closed"
+    assert model.closed.is_set()
+
+
+def test_cleanup_happens_after_cooperative_worker_stops():
+    model = CooperativeShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+
+    assert model.closed.is_set()
+
+
+def test_delayed_cleanup_waits_for_worker_to_stop():
+    model = DelayedShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+
+    assert model.closed.is_set() is False
+    model.release.set()
+    manager.wait_for_active_task()
+
+    assert model.closed.is_set()

@@ -139,6 +139,9 @@ class LofiFocusApp(App[None]):
         self.set_interval(1.0, self.refresh_status)
         self.set_focus(None)
 
+    async def on_unmount(self) -> None:
+        self.session_manager.shutdown()
+
     async def refresh_status(self) -> None:
         self.status = self.session_manager.health()
         self._refresh_display()
