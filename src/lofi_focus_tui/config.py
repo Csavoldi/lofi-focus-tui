@@ -57,7 +57,6 @@ class RunPodConfig(BaseModel):
 
 class AppConfig(BaseModel):
     theme: str = "city_pop"
-    server: ServerConfig = Field(default_factory=ServerConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     playback: PlaybackConfig = Field(default_factory=PlaybackConfig)
     ace_step_http: AceStepHttpConfig = Field(default_factory=AceStepHttpConfig)

@@ -1,11 +1,12 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+import lofi_focus_tui.backend.api as api_module
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
 from lofi_focus_tui.backend.api import _build_model, _build_playback, create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
-from lofi_focus_tui.config import AppConfig, GenerationConfig, PlaybackConfig
+from lofi_focus_tui.config import AppConfig, GenerationConfig, PlaybackConfig, ServerConfig
 from lofi_focus_tui.domain import BackendStatus, SessionRequest
 from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
@@ -281,3 +282,27 @@ def test_build_model_selects_configured_generation_backend():
         _build_model(AppConfig(generation=GenerationConfig(backend="runpod"))),
         RunPodAceStepAdapter,
     )
+
+
+def test_main_uses_standalone_server_defaults(monkeypatch):
+    captured = {}
+    manager = object()
+    expected_server = ServerConfig(host="192.0.2.44", port=9999)
+
+    monkeypatch.setattr(api_module, "load_config", lambda: AppConfig())
+    monkeypatch.setattr(api_module, "_build_manager", lambda config: manager)
+    monkeypatch.setattr(api_module, "create_app", lambda manager: "test-app")
+    monkeypatch.setattr(api_module, "ServerConfig", lambda: expected_server)
+    monkeypatch.setattr(
+        api_module.uvicorn,
+        "run",
+        lambda app, **kwargs: captured.update(app=app, **kwargs),
+    )
+
+    api_module.main()
+
+    assert captured == {
+        "app": "test-app",
+        "host": expected_server.host,
+        "port": expected_server.port,
+    }

@@ -1,6 +1,6 @@
 from httpx import AsyncBaseTransport, AsyncClient, HTTPError
 
-from lofi_focus_tui.config import ServerConfig, load_config
+from lofi_focus_tui.config import ServerConfig
 from lofi_focus_tui.domain import BackendStatus, ExportResponse, SessionRequest
 
 
@@ -15,7 +15,7 @@ class BackendClient:
 
     @classmethod
     def from_config(cls, config: ServerConfig | None = None) -> "BackendClient":
-        server = config or load_config().server
+        server = config or ServerConfig()
         return cls(base_url=f"http://{server.host}:{server.port}")
 
     async def get_status(self) -> BackendStatus:

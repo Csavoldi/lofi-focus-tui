@@ -1,9 +1,5 @@
 theme = "city_pop"
 
-[server]
-host = "127.0.0.1"
-port = 8765
-
 [generation]
 backend = "mock"
 output_format = "wav"

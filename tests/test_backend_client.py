@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport
 
+import lofi_focus_tui.tui.backend_client as backend_client_module
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.backend.api import create_app
 from lofi_focus_tui.backend.session_manager import SessionManager
@@ -139,3 +140,17 @@ def test_backend_client_uses_server_config_base_url():
     client = BackendClient.from_config(ServerConfig(host="0.0.0.0", port=9999))
 
     assert client.base_url == "http://0.0.0.0:9999"
+
+
+def test_backend_client_default_does_not_reload_app_config(monkeypatch):
+    monkeypatch.setattr(
+        backend_client_module,
+        "load_config",
+        lambda: pytest.fail("BackendClient.from_config() must not load AppConfig"),
+        raising=False,
+    )
+
+    client = BackendClient.from_config()
+
+    server = ServerConfig()
+    assert client.base_url == f"http://{server.host}:{server.port}"

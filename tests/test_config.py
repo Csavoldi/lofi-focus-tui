@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -18,8 +20,8 @@ def test_default_config_loads_without_file(tmp_path, monkeypatch):
     config = load_config()
 
     assert isinstance(config, AppConfig)
-    assert config.server.host == "127.0.0.1"
-    assert config.server.port == 8765
+    assert "server" not in config.model_dump()
+    assert not hasattr(config, "server")
     assert config.generation.backend == "ace-step-http"
     assert config.ace_step_http.base_url == "http://127.0.0.1:8001"
     assert config.generation.checkpoint_path == ""
@@ -185,3 +187,57 @@ def test_remote_execution_config_sections_load_from_toml(tmp_path):
     assert config.runpod.template_id == "template-1"
     assert config.runpod.volume_id == "volume-1"
     assert config.runpod.auto_destroy is False
+
+
+def test_legacy_server_section_is_ignored_while_other_settings_load(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                'theme = "forest"',
+                "",
+                "[server]",
+                'host = "192.0.2.44"',
+                "port = 9999",
+                "",
+                "[generation]",
+                'backend = "ace-step"',
+                "inference_steps = 44",
+                "",
+                "[playback]",
+                "volume = 0.35",
+                "",
+                "[ace_step_http]",
+                'base_url = "http://192.0.2.220:8001"',
+                'api_key = "secret"',
+                "",
+                "[runpod]",
+                'gpu_type = "NVIDIA RTX A6000"',
+                'template_id = "template-1"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert "server" not in config.model_dump()
+    assert config.theme == "forest"
+    assert config.generation.backend == "ace-step"
+    assert config.generation.inference_steps == 44
+    assert config.playback.volume == 0.35
+    assert config.ace_step_http.base_url == "http://192.0.2.220:8001"
+    assert config.ace_step_http.api_key == "secret"
+    assert config.runpod.gpu_type == "NVIDIA RTX A6000"
+    assert config.runpod.template_id == "template-1"
+
+
+def test_pyproject_keeps_httpx_runtime_dependency():
+    pyproject = config_module.tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+
+    assert any(
+        dependency.startswith("httpx")
+        for dependency in pyproject["project"]["dependencies"]
+    )

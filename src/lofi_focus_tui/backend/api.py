@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from lofi_focus_tui.backend.session_manager import SessionManager
-from lofi_focus_tui.config import load_config
+from lofi_focus_tui.config import ServerConfig, load_config
 from lofi_focus_tui.domain import (
     BackendStatus,
     ExportRequest,
@@ -79,8 +79,9 @@ def create_app(manager: SessionManager | None = None) -> FastAPI:
 
 def main() -> None:
     config = load_config()
+    server = ServerConfig()
     uvicorn.run(
         create_app(manager=_build_manager(config)),
-        host=config.server.host,
-        port=config.server.port,
+        host=server.host,
+        port=server.port,
     )
