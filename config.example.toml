@@ -12,11 +12,6 @@
 # arcade, or rain. Cycle themes live with the t key in the TUI.
 theme = "city_pop"
 
-[server]
-# Host and port the Lofi backend listens on, and where the TUI connects.
-host = "127.0.0.1"
-port = 8765
-
 [generation]
 # Backend: mock | ace-step | ace-step-http | runpod
 # ace-step-http is the normal default; mock is an explicit development fallback.

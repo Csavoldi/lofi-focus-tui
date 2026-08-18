@@ -4,7 +4,9 @@
 
 The application default is `ace-step-http` using `http://127.0.0.1:8001`. The committed
 `config.example.toml` shows every section with the application defaults; copy it to
-`config.toml` and edit the values for your machine.
+`config.toml` and edit the values for your machine. Port `8001` is used only by the
+separate ACE-Step HTTP service. For an offline run, use
+`LOFI_BACKEND=mock lofi`.
 
 focus and music preset are separate API fields.
 API requests carry separate focus and music preset fields: `focus` and `preset`.
@@ -17,15 +19,8 @@ An explicit valid focus is preserved with a valid music preset.
 An explicit non-null focus plus a legacy focus-valued preset is rejected.
 no TOML keys change.
 
-## Server
-
-```toml
-[server]
-host = "127.0.0.1"
-port = 8765
-```
-
-The backend listens on this host and port. The TUI client uses the same values when created from config.
+The app and its generation backend run in one process. The app does not listen on a Lofi
+HTTP port.
 
 ## Generation
 
@@ -40,7 +35,8 @@ chunk_seconds = 600
 checkpoint_path = ""
 ```
 
-`ace-step-http` is the default backend and uses `http://127.0.0.1:8001`.
+`ace-step-http` is the default backend and connects to the separate ACE-Step HTTP service
+at `http://127.0.0.1:8001`.
 
 Backends:
 
@@ -72,6 +68,9 @@ Playback uses `sounddevice` when installed and falls back to a null player in un
 `fade_seconds` applies a fade to playback audio without changing the saved WAV.
 
 ## ACE-Step-1.5 HTTP
+
+Start the separate ACE-Step HTTP service before running `lofi`. Its port `8001` belongs to
+that service, not to the Lofi app.
 
 ```toml
 [ace_step_http]

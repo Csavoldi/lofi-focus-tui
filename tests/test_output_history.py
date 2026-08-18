@@ -1,4 +1,5 @@
 import json
+import os
 import wave
 
 import numpy as np
@@ -127,6 +128,43 @@ def test_history_store_lists_newest_first_and_persists_favorites(tmp_path):
     reloaded = HistoryStore(tmp_path / "history.jsonl")
     assert reloaded.find("session-1").favorite is True
     assert reloaded.list(limit=1)[0].session_id == "session-2"
+
+
+def test_history_atomic_write_failure_preserves_original_records(tmp_path, monkeypatch):
+    path = tmp_path / "history.jsonl"
+    store = HistoryStore(path)
+    original = SessionRecord(
+        session_id="session-1",
+        preset="deep_work",
+        created_at="2026-06-21T10:00:00+00:00",
+        duration_seconds=30,
+        audio_path="one.wav",
+        metadata_path="one.json",
+        seed=1,
+        tags=["lofi"],
+    )
+    replacement = SessionRecord(
+        session_id="session-2",
+        preset="reading",
+        created_at="2026-06-21T11:00:00+00:00",
+        duration_seconds=60,
+        audio_path="two.wav",
+        metadata_path="two.json",
+        seed=2,
+        tags=["ambient"],
+    )
+    store.append(original)
+
+    def fail_replace(source, target):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        store.append(replacement)
+
+    assert store.list() == [original]
+    assert list(tmp_path.glob(".history.jsonl.*")) == []
 
 
 def test_history_migrates_legacy_rows_without_rewriting_on_read(tmp_path):

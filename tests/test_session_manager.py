@@ -1,8 +1,14 @@
 import json
+import os
+import subprocess
+import sys
+import textwrap
+import time
 from pathlib import Path
-from threading import Event, Lock
+from threading import Event, Lock, Thread
 
 import numpy as np
+import pytest
 
 from lofi_focus_tui import composition
 from lofi_focus_tui.audio.output import OutputManager
@@ -50,6 +56,49 @@ class BlockingRecordingModel:
                 "output_path": f"{blueprint.session_id}.wav",
             },
         )
+
+
+class CooperativeShutdownModel:
+    name = "cooperative-shutdown"
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.cancel_seen = Event()
+        self.closed = Event()
+        self.close_calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None, cancel_event=None):
+        self.started.set()
+        assert cancel_event is not None
+        cancel_event.wait(timeout=2.5)
+        self.cancel_seen.set()
+        raise GenerationCancelledError("generation cancelled")
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self.closed.set()
+
+
+class DelayedShutdownModel:
+    name = "delayed-shutdown"
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.release = Event()
+        self.closed = Event()
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.started.set()
+        self.release.wait()
+        return GenerationResult(
+            audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+            sample_rate=44100,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+    def close(self) -> None:
+        self.closed.set()
 
 
 def test_start_session_returns_generating_before_generation_finishes():
@@ -726,3 +775,648 @@ def test_session_status_reports_disabled_playback_mode():
 
     assert final_status.playback == "disabled"
     assert final_status.message == "generated; playback disabled"
+
+
+def test_shutdown_cancels_active_task_stops_playback_and_waits_at_most_two_seconds():
+    model = DelayedShutdownModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(model=model, playback=playback)
+
+    status = manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+
+    started_at = time.monotonic()
+    manager.shutdown()
+    elapsed = time.monotonic() - started_at
+
+    assert elapsed < 2.2
+    assert manager._tasks[status.active_task_id].cancel_event.is_set()
+    assert model.closed.is_set() is False
+    assert playback.stopped is True
+
+    model.release.set()
+    manager.wait_for_active_task(timeout=1.0)
+    assert model.closed.is_set()
+
+
+def test_repeated_shutdown_calls_are_noops():
+    model = CooperativeShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+    manager.shutdown()
+
+    assert model.close_calls == 1
+
+
+def test_new_sessions_controls_and_export_raise_after_shutdown(tmp_path):
+    manager = SessionManager(model=RecordingModel())
+    manager.shutdown()
+
+    operations = (
+        lambda: manager.start_session(make_request()),
+        manager.pause_session,
+        manager.resume_session,
+        lambda: manager.adjust_volume(0.1),
+        lambda: manager.seek_playback(1.0),
+        manager.restart_playback,
+        manager.stop_session,
+        lambda: manager.export_current(str(tmp_path)),
+    )
+    for operation in operations:
+        with pytest.raises(RuntimeError, match="^session manager is closed$"):
+            operation()
+
+
+def test_export_releases_manager_locks_before_copy(tmp_path):
+    class BlockingOutputManager(OutputManager):
+        def __init__(self, base_dir):
+            super().__init__(base_dir)
+            self.export_started = Event()
+            self.release_export = Event()
+
+        def export_session(self, audio_path, directory):
+            self.export_started.set()
+            self.release_export.wait(timeout=2.0)
+            return super().export_session(audio_path, directory)
+
+    class ProbingPlayback(RecordingPlayback):
+        def __init__(self):
+            super().__init__()
+            self.pause_called = Event()
+
+        def pause(self):
+            self.pause_called.set()
+            return super().pause()
+
+    output_manager = BlockingOutputManager(tmp_path / "outputs")
+    playback = ProbingPlayback()
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=playback,
+        output_manager=output_manager,
+        render_seconds_limit=1,
+    )
+    export_errors = []
+    playback_errors = []
+
+    def run_export():
+        try:
+            manager.export_current(str(tmp_path / "exports"))
+        except BaseException as exc:
+            export_errors.append(exc)
+
+    def run_pause():
+        try:
+            manager.pause_session()
+        except BaseException as exc:
+            playback_errors.append(exc)
+
+    export_thread = None
+    pause_thread = None
+    try:
+        manager.start_session(make_request())
+        assert manager.wait_for_active_task(timeout=1.0).output_path is not None
+
+        export_thread = Thread(target=run_export)
+        export_thread.start()
+        assert output_manager.export_started.wait(timeout=1.0)
+
+        pause_thread = Thread(target=run_pause)
+        pause_thread.start()
+        assert playback.pause_called.wait(timeout=1.0)
+    finally:
+        output_manager.release_export.set()
+        if export_thread is not None and export_thread.ident is not None:
+            export_thread.join(timeout=1.0)
+        if pause_thread is not None and pause_thread.ident is not None:
+            pause_thread.join(timeout=1.0)
+        manager.shutdown()
+
+    if export_thread is not None:
+        assert not export_thread.is_alive()
+    if pause_thread is not None:
+        assert not pause_thread.is_alive()
+    assert export_errors == []
+    assert playback_errors == []
+
+
+def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
+    class LockProbeHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.manager = None
+            self.lock_free = []
+
+        def list(self, limit=20):
+            if self.manager is not None:
+                acquired = self.manager._lock.acquire(blocking=False)
+                self.lock_free.append(acquired)
+                if acquired:
+                    self.manager._lock.release()
+            return super().list(limit=limit)
+
+    history_store = LockProbeHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    history_store.manager = manager
+
+    manager.start_session(make_request())
+    manager.wait_for_active_task(timeout=1.0)
+    manager.stop_session()
+    manager.shutdown()
+
+    assert history_store.lock_free
+    assert all(history_store.lock_free)
+
+
+def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
+    class ProbingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.manager = None
+            self.commit_lock_free = []
+            self.history_lock_held = []
+
+        def _probe_commit_lock(self):
+            acquired = self.manager._commit_lock.acquire(blocking=False)
+            self.commit_lock_free.append(acquired)
+            if acquired:
+                self.manager._commit_lock.release()
+
+        def _probe_history_lock(self):
+            acquired = self.manager._history_lock.acquire(blocking=False)
+            self.history_lock_held.append(not acquired)
+            if acquired:
+                self.manager._history_lock.release()
+
+        def append(self, record):
+            self._probe_commit_lock()
+            self._probe_history_lock()
+            super().append(record)
+
+        def list(self, limit=20):
+            if self.manager is not None:
+                self._probe_commit_lock()
+                self._probe_history_lock()
+            return super().list(limit=limit)
+
+    class ProbingPlayback(RecordingPlayback):
+        def __init__(self):
+            super().__init__()
+            self.manager = None
+            self.commit_lock_free = None
+
+        def load(self, result):
+            acquired = self.manager._commit_lock.acquire(blocking=False)
+            self.commit_lock_free = acquired
+            if acquired:
+                self.manager._commit_lock.release()
+            super().load(result)
+
+    history_store = ProbingHistoryStore(tmp_path / "history.jsonl")
+    playback = ProbingPlayback()
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=playback,
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    history_store.manager = manager
+    playback.manager = manager
+
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.PLAYING
+        assert history_store.commit_lock_free
+        assert all(history_store.commit_lock_free)
+        assert history_store.history_lock_held
+        assert all(history_store.history_lock_held)
+        assert playback.commit_lock_free is True
+    finally:
+        manager.shutdown()
+
+
+def test_queued_future_cancellation_returns_and_discards_future():
+    script = textwrap.dedent(
+        """
+        import numpy as np
+        from threading import Event
+
+        from lofi_focus_tui.backend.session_manager import SessionManager
+        from lofi_focus_tui.domain import EnergyLevel, SessionRequest
+        from lofi_focus_tui.generation.base import GenerationResult
+
+        class BlockingModel:
+            name = "blocking"
+
+            def __init__(self):
+                self.started = Event()
+                self.release = Event()
+
+            def generate(self, blueprint, duration_seconds, settings=None):
+                self.started.set()
+                self.release.wait(timeout=5.0)
+                return GenerationResult(
+                    audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+                    sample_rate=44100,
+                    duration_seconds=duration_seconds,
+                    metadata={"session_id": blueprint.session_id, "backend": self.name},
+                )
+
+        request = SessionRequest(
+            preset="classic_lofi",
+            duration_minutes=5,
+            energy=EnergyLevel.STEADY,
+        )
+        model = BlockingModel()
+        manager = SessionManager(model=model, render_seconds_limit=1)
+        manager.start_session(request)
+        assert model.started.wait(timeout=1.0)
+        manager.start_session(request)
+        queued = manager._active_future
+        assert queued is not None
+        assert not queued.running()
+        manager.stop_session()
+        assert queued.cancelled()
+        assert queued not in manager._futures
+        model.release.set()
+        manager.shutdown()
+        """
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(f"queued future cancellation hung: {exc}")
+    assert result.returncode == 0, result.stderr
+
+
+def test_stop_session_rejects_closed_before_blocked_history_read(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.block_list = False
+            self.release_list = Event()
+
+        def list(self, limit=20):
+            if self.block_list:
+                self.release_list.wait(timeout=5.0)
+            return super().list(limit=limit)
+
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    manager.shutdown()
+    history_store.block_list = True
+    stop_errors = []
+
+    def run_stop():
+        try:
+            manager.stop_session()
+        except BaseException as exc:
+            stop_errors.append(exc)
+
+    stop_thread = Thread(target=run_stop, daemon=True)
+    started_at = time.monotonic()
+    stop_thread.start()
+    try:
+        stop_thread.join(timeout=0.5)
+        elapsed = time.monotonic() - started_at
+        assert not stop_thread.is_alive()
+        assert elapsed < 0.5
+    finally:
+        history_store.release_list.set()
+        stop_thread.join(timeout=1.0)
+
+    assert len(stop_errors) == 1
+    assert str(stop_errors[0]) == "session manager is closed"
+
+
+@pytest.mark.parametrize("failure", ["wav", "metadata"])
+def test_active_output_write_failure_cleans_partial_artifacts(tmp_path, failure):
+    output_manager = OutputManager(tmp_path / "outputs")
+    if failure == "wav":
+        def failing_save_wav(result, directory, filename="audio.wav"):
+            (directory / filename).write_bytes(b"partial audio")
+            raise OSError("save wav failed")
+
+        output_manager.save_wav = failing_save_wav
+    else:
+        def failing_save_metadata(metadata, directory):
+            (directory / "metadata.json").write_text("partial metadata", encoding="utf-8")
+            raise OSError("save metadata failed")
+
+        output_manager.save_metadata = failing_save_metadata
+
+    manager = SessionManager(
+        model=RecordingModel(),
+        output_manager=output_manager,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
+def test_history_append_failure_cleans_record_and_artifacts(tmp_path):
+    class FailingHistoryStore(HistoryStore):
+        def append(self, record):
+            super().append(record)
+            raise OSError("history append failed")
+
+    history_store = FailingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=RecordingModel(),
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert history_store.list(limit=5) == []
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
+def test_playback_failure_rolls_back_record_and_artifacts(tmp_path):
+    class FailingPlayback(RecordingPlayback):
+        def load(self, result):
+            raise OSError("playback load failed")
+
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=FailingPlayback(),
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert history_store.list(limit=5) == []
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
+def test_shutdown_does_not_wait_for_blocked_history_snapshot(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.block_list = False
+            self.release_list = Event()
+
+        def list(self, limit=20):
+            if self.block_list:
+                self.release_list.wait(timeout=5.0)
+            return super().list(limit=limit)
+
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    history_store.block_list = True
+    shutdown_errors = []
+
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+
+    shutdown_thread = Thread(target=run_shutdown, daemon=True)
+    started_at = time.monotonic()
+    shutdown_thread.start()
+    try:
+        shutdown_thread.join(timeout=2.3)
+        elapsed = time.monotonic() - started_at
+        assert not shutdown_thread.is_alive()
+        assert elapsed < 2.2
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+    finally:
+        history_store.release_list.set()
+        shutdown_thread.join(timeout=1.0)
+
+
+def test_shutdown_does_not_wait_for_blocked_output_commit(tmp_path):
+    model = DelayedShutdownModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    save_started = Event()
+    release_save = Event()
+    original_save_wav = output_manager.save_wav
+
+    def blocked_save_wav(result, directory, filename="audio.wav"):
+        save_started.set()
+        release_save.wait()
+        return original_save_wav(result, directory, filename)
+
+    output_manager.save_wav = blocked_save_wav
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    model.release.set()
+    assert save_started.wait(timeout=1.0)
+
+    shutdown_errors = []
+
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+
+    shutdown_thread = Thread(
+        target=run_shutdown,
+        daemon=True,
+    )
+    started_at = time.monotonic()
+    shutdown_thread.start()
+    try:
+        shutdown_thread.join(timeout=2.3)
+        elapsed = time.monotonic() - started_at
+        assert not shutdown_thread.is_alive()
+        assert elapsed < 2.2
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+        assert history_store.list(limit=5) == []
+    finally:
+        release_save.set()
+        shutdown_thread.join(timeout=1.0)
+
+    manager.wait_for_active_task(timeout=1.0)
+    assert model.closed.is_set()
+    assert history_store.list(limit=5) == []
+    assert playback.loaded is None
+    assert manager.health().message == "closed"
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
+
+
+def test_shutdown_rolls_back_history_append_after_close(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.append_started = Event()
+            self.append_written = Event()
+            self.release_append = Event()
+            self.release_append_return = Event()
+
+        def append(self, record):
+            self.append_started.set()
+            self.release_append.wait(timeout=5.0)
+            super().append(record)
+            self.append_written.set()
+            self.release_append_return.wait(timeout=5.0)
+
+        def list(self, limit=20):
+            if self.append_started.is_set() and not self.append_written.is_set():
+                self.append_written.wait(timeout=1.0)
+            return super().list(limit=limit)
+
+    model = RecordingModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    assert history_store.append_started.wait(timeout=1.0)
+    with manager._lock:
+        session_id = manager._status.active_session_id
+        manager._status = manager._status.model_copy(
+            update={"recent_sessions": [f"{session_id[:8]} classic_lofi"]}
+        )
+
+    shutdown_errors = []
+
+    def run_shutdown():
+        try:
+            manager.shutdown()
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+
+    shutdown_thread = Thread(target=run_shutdown, daemon=True)
+    shutdown_thread.start()
+    history_store.release_append.set()
+    assert history_store.append_written.wait(timeout=1.0)
+    try:
+        shutdown_thread.join(timeout=2.3)
+        assert not shutdown_thread.is_alive()
+        assert shutdown_errors == []
+        assert manager.health().message == "closed"
+    finally:
+        history_store.release_append_return.set()
+        shutdown_thread.join(timeout=1.0)
+
+    manager.wait_for_active_task(timeout=1.0)
+    assert history_store.list(limit=5) == []
+    assert playback.loaded is None
+    assert manager.health().recent_sessions == []
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
+
+
+def test_health_reports_idle_closed_after_shutdown():
+    manager = SessionManager(model=RecordingModel())
+
+    manager.shutdown()
+
+    status = manager.health()
+    assert status.state == BackendState.IDLE
+    assert status.message == "closed"
+    assert status.active_task_id is None
+
+
+def test_blocked_worker_late_result_does_not_commit_or_restart_playback(tmp_path):
+    model = DelayedShutdownModel()
+    playback = RecordingPlayback()
+    output_manager = OutputManager(tmp_path / "outputs")
+    history_store = HistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        output_manager=output_manager,
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+
+    status = manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+    assert model.closed.is_set() is False
+
+    model.release.set()
+    manager.wait_for_active_task()
+
+    task = manager._tasks[status.active_task_id]
+    assert not list((tmp_path / "outputs").rglob("audio.wav"))
+    assert not list((tmp_path / "outputs").rglob("metadata.json"))
+    assert history_store.list(limit=5) == []
+    assert task.output_path is None
+    assert playback.loaded is None
+    assert manager.health().message == "closed"
+    assert model.closed.is_set()
+
+
+def test_cleanup_happens_after_cooperative_worker_stops():
+    model = CooperativeShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+
+    assert model.closed.is_set()
+
+
+def test_delayed_cleanup_waits_for_worker_to_stop():
+    model = DelayedShutdownModel()
+    manager = SessionManager(model=model)
+
+    manager.start_session(make_request())
+    assert model.started.wait(timeout=1.0)
+    manager.shutdown()
+
+    assert model.closed.is_set() is False
+    model.release.set()
+    manager.wait_for_active_task()
+
+    assert model.closed.is_set()

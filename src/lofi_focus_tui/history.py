@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -53,8 +55,9 @@ class HistoryStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def append(self, record: SessionRecord) -> None:
-        with self.path.open("a", encoding="utf-8") as history_file:
-            history_file.write(record.model_dump_json() + "\n")
+        records = self._read_records()
+        records.append(record)
+        self._write_records(records)
 
     def list(self, limit: int = 20) -> list[SessionRecord]:
         records = self._read_records()
@@ -89,6 +92,26 @@ class HistoryStore:
         return records
 
     def _write_records(self, records: list[SessionRecord]) -> None:
-        with self.path.open("w", encoding="utf-8") as history_file:
-            for record in records:
-                history_file.write(record.model_dump_json() + "\n")
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as history_file:
+                temporary_path = Path(history_file.name)
+                for record in records:
+                    history_file.write(record.model_dump_json() + "\n")
+                history_file.flush()
+                os.fsync(history_file.fileno())
+            os.replace(temporary_path, self.path)
+        except BaseException:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise

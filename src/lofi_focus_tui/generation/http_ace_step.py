@@ -1,7 +1,7 @@
 import json
 import time
 import urllib.parse
-from threading import Event
+from threading import Event, Lock
 from typing import Any, Callable
 
 import httpx
@@ -105,11 +105,20 @@ class AceStepHttpAdapter:
         self.poll_interval_seconds = poll_interval_seconds
         self.clock = clock or time.monotonic
         self.sleep = sleep or time.sleep
-        self.client = client or httpx.Client(
-            base_url=self.base_url,
-            timeout=timeout_seconds,
-            transport=transport,
+        self._owns_client = client is None
+        self._close_lock = Lock()
+        self._closed = False
+        self.client = client if client is not None else httpx.Client(
+            base_url=self.base_url, timeout=timeout_seconds, transport=transport
         )
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._owns_client:
+                self.client.close()
 
     def health(self) -> bool:
         try:

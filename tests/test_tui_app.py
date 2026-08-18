@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from enum import Enum
 
 import pytest
@@ -56,7 +58,7 @@ def test_render_session_includes_prompt_summary_and_vocal_mode():
 
 @pytest.mark.asyncio
 async def test_tui_composes_blurred_prompt_editor_with_max_length():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         prompt = pilot.app.query_one("#prompt", Input)
@@ -68,7 +70,7 @@ async def test_tui_composes_blurred_prompt_editor_with_max_length():
 
 @pytest.mark.asyncio
 async def test_tui_prompt_focus_lifecycle_preserves_editor_value():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         prompt = pilot.app.query_one("#prompt", Input)
@@ -90,8 +92,8 @@ async def test_tui_prompt_focus_lifecycle_preserves_editor_value():
 
 @pytest.mark.asyncio
 async def test_tui_focused_command_keys_edit_prompt_without_actions():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("i")
@@ -106,8 +108,8 @@ async def test_tui_focused_command_keys_edit_prompt_without_actions():
 
 @pytest.mark.asyncio
 async def test_tui_unfocused_command_keys_dispatch_actions():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("s")
@@ -124,7 +126,7 @@ async def test_tui_unfocused_command_keys_dispatch_actions():
 
 @pytest.mark.asyncio
 async def test_tui_prompt_summary_refreshes_from_editor_value():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         prompt = pilot.app.query_one("#prompt", Input)
@@ -142,8 +144,8 @@ async def test_tui_prompt_summary_refreshes_from_editor_value():
 
 @pytest.mark.asyncio
 async def test_tui_prompt_input_max_length_reaches_request_limit():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("i")
@@ -159,8 +161,8 @@ async def test_tui_prompt_input_max_length_reaches_request_limit():
 
 @pytest.mark.asyncio
 async def test_tui_start_request_uses_stripped_prompt_and_vocal_mode():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         prompt = pilot.app.query_one("#prompt", Input)
@@ -180,7 +182,7 @@ async def test_tui_start_request_uses_stripped_prompt_and_vocal_mode():
 
 @pytest.mark.asyncio
 async def test_tui_prompt_editor_value_survives_category_changes():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         prompt = pilot.app.query_one("#prompt", Input)
@@ -191,7 +193,7 @@ async def test_tui_prompt_editor_value_survives_category_changes():
         assert "prompt: freeform idea" in str(pilot.app.query_one("#session").render())
 
 
-class FakeBackendClient:
+class FakeSessionManager:
     def __init__(self) -> None:
         self.started = False
         self.paused = False
@@ -202,19 +204,26 @@ class FakeBackendClient:
         self.restarted = False
         self.exported_directories = []
         self.export_error = None
+        self.export_started = None
+        self.export_release = None
+        self.export_thread_ids = []
         self.status_calls = 0
+        self.shutdown_called = False
         self.requests = []
         self.statuses = [
             BackendStatus(state="idle", message="ready", backend="mock", device="cpu")
         ]
 
-    async def get_status(self) -> BackendStatus:
+    def health(self) -> BackendStatus:
         self.status_calls += 1
         if len(self.statuses) > 1:
             return self.statuses.pop(0)
         return self.statuses[0]
 
-    async def start_session(self, request):
+    def shutdown(self) -> None:
+        self.shutdown_called = True
+
+    def start_session(self, request):
         self.started = True
         self.requests.append(request)
         return BackendStatus(
@@ -226,32 +235,36 @@ class FakeBackendClient:
             device="cpu",
         )
 
-    async def pause_session(self) -> BackendStatus:
+    def pause_session(self) -> BackendStatus:
         self.paused = True
         return BackendStatus(state="paused", message="paused", backend="mock", device="cpu")
 
-    async def resume_session(self) -> BackendStatus:
+    def resume_session(self) -> BackendStatus:
         self.resumed = True
         return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
 
-    async def stop_session(self) -> BackendStatus:
+    def stop_session(self) -> BackendStatus:
         self.stopped = True
         return BackendStatus(state="idle", message="stopped", backend="mock", device="cpu")
 
-    async def adjust_volume(self, delta: float) -> BackendStatus:
+    def adjust_volume(self, delta: float) -> BackendStatus:
         self.volume_deltas.append(delta)
         return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
 
-    async def seek(self, seconds: float) -> BackendStatus:
+    def seek_playback(self, seconds: float) -> BackendStatus:
         self.seek_seconds.append(seconds)
         return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
 
-    async def restart(self) -> BackendStatus:
+    def restart_playback(self) -> BackendStatus:
         self.restarted = True
         return BackendStatus(state="playing", message="playing", backend="mock", device="cpu")
 
-    async def export_session(self, directory: str) -> ExportResponse:
+    def export_current(self, directory: str) -> ExportResponse:
         self.exported_directories.append(directory)
+        self.export_thread_ids.append(threading.get_ident())
+        if self.export_started is not None:
+            self.export_started.set()
+            self.export_release.wait()
         if self.export_error:
             raise RuntimeError(self.export_error)
         return ExportResponse(
@@ -262,8 +275,32 @@ class FakeBackendClient:
 
 
 @pytest.mark.asyncio
+async def test_tui_unmount_shuts_down_session_manager():
+    session_manager = FakeSessionManager()
+    app = LofiFocusApp(session_manager=session_manager, config=AppConfig())
+
+    await app.on_unmount()
+
+    assert session_manager.shutdown_called is True
+
+
+@pytest.mark.asyncio
+async def test_tui_mount_reads_manager_health():
+    session_manager = FakeSessionManager()
+    session_manager.statuses = [
+        BackendStatus(state="playing", message="manager status", backend="mock", device="cpu")
+    ]
+    app = LofiFocusApp(session_manager=session_manager, config=AppConfig())
+
+    async with app.run_test() as pilot:
+        assert pilot.app.status.message == "manager status"
+
+    assert session_manager.status_calls >= 1
+
+
+@pytest.mark.asyncio
 async def test_tui_initializes_independent_focus_and_preset():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     assert app.focus == "deep_work"
     assert app.preset == "classic_lofi"
@@ -271,7 +308,7 @@ async def test_tui_initializes_independent_focus_and_preset():
 
 @pytest.mark.asyncio
 async def test_tui_renders_session_labels_with_descriptions():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         text = status_text(pilot.app)
@@ -289,8 +326,8 @@ def test_tui_duration_options_include_short_real_generation_smoke_test():
 
 @pytest.mark.asyncio
 async def test_tui_start_action_updates_session_state():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.app.action_start_session()
@@ -302,8 +339,8 @@ async def test_tui_start_action_updates_session_state():
 
 @pytest.mark.asyncio
 async def test_tui_start_action_uses_selected_session_values():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("1")
@@ -323,7 +360,7 @@ async def test_tui_start_action_uses_selected_session_values():
 
 @pytest.mark.asyncio
 async def test_tui_keys_cycle_focus_preset_and_duration_independently():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("1")
@@ -348,7 +385,7 @@ async def test_tui_renders_string_values_after_legacy_enum_cycles(monkeypatch):
         (LegacyValue.READING, LegacyValue.NEO_SOUL, LegacyValue.AMBIENT_TAPE)
     )
     monkeypatch.setattr(app_module, "cycle_value", lambda *_: next(cycled_values))
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("1")
@@ -385,8 +422,8 @@ def test_tui_uses_shared_option_catalogs_without_duplicate_lists():
 
 @pytest.mark.asyncio
 async def test_tui_pause_resume_and_stop_actions_call_backend():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         pilot.app.status = BackendStatus(
@@ -405,8 +442,8 @@ async def test_tui_pause_resume_and_stop_actions_call_backend():
 
 @pytest.mark.asyncio
 async def test_tui_playback_keys_call_backend_controls():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         pilot.app.status = BackendStatus(
@@ -421,8 +458,8 @@ async def test_tui_playback_keys_call_backend_controls():
 
 @pytest.mark.asyncio
 async def test_tui_export_modal_submits_default_directory():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("e")
@@ -434,9 +471,9 @@ async def test_tui_export_modal_submits_default_directory():
 
 @pytest.mark.asyncio
 async def test_tui_export_modal_keeps_open_on_error_and_closes_on_escape():
-    backend_client = FakeBackendClient()
+    backend_client = FakeSessionManager()
     backend_client.export_error = "permission denied"
-    app = LofiFocusApp(backend_client=backend_client)
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("e")
@@ -448,8 +485,49 @@ async def test_tui_export_modal_keeps_open_on_error_and_closes_on_escape():
 
 
 @pytest.mark.asyncio
+async def test_tui_export_runs_in_worker_without_blocking_event_loop():
+    session_manager = FakeSessionManager()
+    session_manager.export_started = threading.Event()
+    session_manager.export_release = threading.Event()
+    app = LofiFocusApp(session_manager=session_manager, config=AppConfig())
+
+    async with app.run_test() as pilot:
+        await pilot.press("e")
+        export_input = pilot.app.screen.query_one("#export-directory", Input)
+        ticks = 0
+
+        async def heartbeat() -> None:
+            nonlocal ticks
+            while not session_manager.export_release.is_set():
+                ticks += 1
+                await asyncio.sleep(0)
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        submit_task = asyncio.create_task(
+            pilot.app.screen.on_input_submitted(Input.Submitted(export_input, "/tmp/export"))
+        )
+        deadline = asyncio.get_running_loop().time() + 1
+        while (
+            not session_manager.export_started.is_set()
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.001)
+        assert session_manager.export_started.is_set()
+        await asyncio.sleep(0.01)
+        assert ticks > 0
+        assert session_manager.export_thread_ids[0] != threading.get_ident()
+        session_manager.export_release.set()
+        await submit_task
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_tui_refresh_status_updates_progress_text():
-    backend_client = FakeBackendClient()
+    backend_client = FakeSessionManager()
     backend_client.statuses = [
         BackendStatus(state="idle", message="ready", backend="mock", device="cpu"),
         BackendStatus(
@@ -460,7 +538,7 @@ async def test_tui_refresh_status_updates_progress_text():
             progress=0.42,
         ),
     ]
-    app = LofiFocusApp(backend_client=backend_client)
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.app.refresh_status()
@@ -472,7 +550,7 @@ async def test_tui_refresh_status_updates_progress_text():
 
 @pytest.mark.asyncio
 async def test_tui_renders_recent_history():
-    backend_client = FakeBackendClient()
+    backend_client = FakeSessionManager()
     backend_client.statuses = [
         BackendStatus(
             state="playing",
@@ -482,7 +560,7 @@ async def test_tui_renders_recent_history():
             recent_sessions=["abc12345 deep_work", "def67890 reading *"],
         )
     ]
-    app = LofiFocusApp(backend_client=backend_client)
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         text = status_text(pilot.app)
@@ -494,7 +572,7 @@ async def test_tui_renders_recent_history():
 
 @pytest.mark.asyncio
 async def test_tui_renders_chunk_progress():
-    backend_client = FakeBackendClient()
+    backend_client = FakeSessionManager()
     backend_client.statuses = [
         BackendStatus(
             state="generating",
@@ -506,7 +584,7 @@ async def test_tui_renders_chunk_progress():
             chunk_count=5,
         )
     ]
-    app = LofiFocusApp(backend_client=backend_client)
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         text = status_text(pilot.app)
@@ -516,8 +594,8 @@ async def test_tui_renders_chunk_progress():
 
 @pytest.mark.asyncio
 async def test_tui_registers_periodic_status_polling():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
     intervals = []
 
     def record_interval(seconds, callback, *args, **kwargs):
@@ -533,7 +611,7 @@ async def test_tui_registers_periodic_status_polling():
 
 @pytest.mark.asyncio
 async def test_tui_option_guide_renders_every_shared_catalog_description():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("h")
@@ -548,8 +626,8 @@ async def test_tui_option_guide_renders_every_shared_catalog_description():
 
 @pytest.mark.asyncio
 async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
-    backend_client = FakeBackendClient()
-    app = LofiFocusApp(backend_client=backend_client)
+    backend_client = FakeSessionManager()
+    app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("h")
@@ -582,7 +660,7 @@ async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
 
 @pytest.mark.asyncio
 async def test_tui_option_guide_q_quits_through_app_binding():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("h")
@@ -595,7 +673,7 @@ async def test_tui_option_guide_q_quits_through_app_binding():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("close_key", ["escape", "h"])
 async def test_tui_option_guide_closes_with_escape_or_h(close_key):
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         await pilot.press("h")
@@ -606,7 +684,7 @@ async def test_tui_option_guide_closes_with_escape_or_h(close_key):
 
 @pytest.mark.asyncio
 async def test_tui_theme_key_cycles_theme_and_renders_line():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         assert "theme: city_pop" in str(pilot.app.query_one("#session").render())
@@ -619,7 +697,7 @@ async def test_tui_theme_key_cycles_theme_and_renders_line():
 
 @pytest.mark.asyncio
 async def test_tui_theme_key_wraps_around_full_catalog():
-    app = LofiFocusApp(backend_client=FakeBackendClient())
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
     async with app.run_test() as pilot:
         for _ in range(len(THEMES)):
@@ -630,20 +708,20 @@ async def test_tui_theme_key_wraps_around_full_catalog():
 
 @pytest.mark.asyncio
 async def test_tui_uses_theme_from_config():
-    app = LofiFocusApp(
-        backend_client=FakeBackendClient(), config=AppConfig(theme="vhs")
-    )
+    config = AppConfig(theme="vhs")
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=config)
 
     async with app.run_test() as pilot:
         text = str(pilot.app.query_one("#session").render())
 
+    assert app.config is config
     assert pilot.app.active_theme.name == "vhs"
     assert "theme: vhs" in text
 
 
 def test_tui_falls_back_to_default_theme_for_unknown_config_theme():
     app = LofiFocusApp(
-        backend_client=FakeBackendClient(), config=AppConfig(theme="glitter")
+        session_manager=FakeSessionManager(), config=AppConfig(theme="glitter")
     )
 
     assert app.active_theme.name == "city_pop"
