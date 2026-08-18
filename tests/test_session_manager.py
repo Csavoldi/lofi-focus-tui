@@ -854,6 +854,64 @@ def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
     assert all(history_store.lock_free)
 
 
+def test_commit_lock_is_released_before_history_and_playback_io(tmp_path):
+    class ProbingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.manager = None
+            self.commit_lock_free = []
+
+        def _probe_commit_lock(self):
+            acquired = self.manager._commit_lock.acquire(blocking=False)
+            self.commit_lock_free.append(acquired)
+            if acquired:
+                self.manager._commit_lock.release()
+
+        def append(self, record):
+            self._probe_commit_lock()
+            super().append(record)
+
+        def list(self, limit=20):
+            if self.manager is not None:
+                self._probe_commit_lock()
+            return super().list(limit=limit)
+
+    class ProbingPlayback(RecordingPlayback):
+        def __init__(self):
+            super().__init__()
+            self.manager = None
+            self.commit_lock_free = None
+
+        def load(self, result):
+            acquired = self.manager._commit_lock.acquire(blocking=False)
+            self.commit_lock_free = acquired
+            if acquired:
+                self.manager._commit_lock.release()
+            super().load(result)
+
+    history_store = ProbingHistoryStore(tmp_path / "history.jsonl")
+    playback = ProbingPlayback()
+    manager = SessionManager(
+        model=RecordingModel(),
+        playback=playback,
+        output_manager=OutputManager(tmp_path / "outputs"),
+        history_store=history_store,
+        render_seconds_limit=1,
+    )
+    history_store.manager = manager
+    playback.manager = manager
+
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.PLAYING
+        assert history_store.commit_lock_free
+        assert all(history_store.commit_lock_free)
+        assert playback.commit_lock_free is True
+    finally:
+        manager.shutdown()
+
+
 def test_stop_session_rejects_closed_before_blocked_history_read(tmp_path):
     class BlockingHistoryStore(HistoryStore):
         def __init__(self, path):

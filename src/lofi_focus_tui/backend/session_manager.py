@@ -575,7 +575,6 @@ class SessionManager:
                 output_path = self._output_path(result.metadata)
                 metadata_path = None
                 record = None
-                recent_sessions = None
             if output_manager is not None:
                 prepared = self._prepare_output_record(
                     task=task,
@@ -591,69 +590,74 @@ class SessionManager:
                 if prepared is None:
                     return
                 output_path, metadata_path, record = prepared
-            history_appended = False
-            if record is not None and self.history_store is not None:
-                with self._lock:
-                    if not self._is_active_task_locked(task):
-                        should_drop = True
-                    else:
-                        should_drop = False
-                if should_drop:
+
+        recent_sessions = None
+        history_appended = False
+        if record is not None and self.history_store is not None:
+            with self._lock:
+                should_drop = not self._is_active_task_locked(task)
+            if should_drop:
+                self._cleanup_output_artifacts(output_path, metadata_path)
+                return
+            try:
+                self.history_store.append(record)
+                history_appended = True
+            except Exception:
+                if not self._is_active_task(task):
+                    self._rollback_history_record(record)
                     self._cleanup_output_artifacts(output_path, metadata_path)
-                    return
-                try:
-                    self.history_store.append(record)
-                    history_appended = True
-                except Exception:
-                    if not self._is_active_task(task):
-                        self._rollback_history_record(record)
-                    raise
-                recent_sessions = self._recent_session_labels()
-            should_drop = False
-            with self._playback_lock:
-                with self._lock:
+                raise
+            if not self._is_active_task(task):
+                self._rollback_history_record(record)
+                self._cleanup_output_artifacts(output_path, metadata_path)
+                return
+            recent_sessions = self._recent_session_labels()
+
+        should_drop = False
+        with self._playback_lock:
+            with self._lock:
+                if not self._is_active_task_locked(task):
+                    should_drop = True
+                else:
+                    self.playback.load(result)
                     if not self._is_active_task_locked(task):
                         should_drop = True
                     else:
-                        self.playback.load(result)
+                        task.output_path = output_path
+                        playback_mode = self._playback_mode()
+                        if playback_mode == "disabled":
+                            message = "generated; playback disabled"
+                        elif getattr(self.playback, "last_error", None):
+                            message = "generated; playback fallback"
+                        else:
+                            message = "playing"
                         if not self._is_active_task_locked(task):
                             should_drop = True
                         else:
-                            task.output_path = output_path
-                            playback_mode = self._playback_mode()
-                            if playback_mode == "disabled":
-                                message = "generated; playback disabled"
-                            elif getattr(self.playback, "last_error", None):
-                                message = "generated; playback fallback"
-                            else:
-                                message = "playing"
-                            if not self._is_active_task_locked(task):
-                                should_drop = True
-                            else:
-                                task.update(BackendState.PLAYING, message, 1.0)
-                                self._status = BackendStatus(
-                                    state=task.state,
-                                    message=task.message,
-                                    active_session_id=task.session_id,
-                                    progress=task.progress,
-                                    active_task_id=task.task_id,
-                                    output_path=task.output_path,
-                                    error=task.error,
-                                    recent_sessions=list(
-                                        recent_sessions
-                                        if recent_sessions is not None
-                                        else self._status.recent_sessions
-                                    ),
-                                    chunk_index=chunk_count,
-                                    chunk_count=chunk_count,
-                                    backend=self.model.name,
-                                    device=device_backend,
-                                    playback=playback_mode,
-                                )
-            if should_drop:
-                if history_appended and record is not None:
-                    self._rollback_history_record(record)
-                self._cleanup_output_artifacts(output_path, metadata_path)
+                            task.update(BackendState.PLAYING, message, 1.0)
+                            self._status = BackendStatus(
+                                state=task.state,
+                                message=task.message,
+                                active_session_id=task.session_id,
+                                progress=task.progress,
+                                active_task_id=task.task_id,
+                                output_path=task.output_path,
+                                error=task.error,
+                                recent_sessions=list(
+                                    recent_sessions
+                                    if recent_sessions is not None
+                                    else self._status.recent_sessions
+                                ),
+                                chunk_index=chunk_count,
+                                chunk_count=chunk_count,
+                                backend=self.model.name,
+                                device=device_backend,
+                                playback=playback_mode,
+                            )
+        if should_drop:
+            if history_appended and record is not None:
+                self._rollback_history_record(record)
+            self._cleanup_output_artifacts(output_path, metadata_path)
 
     def _prepare_output_record(
         self,
