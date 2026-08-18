@@ -60,13 +60,16 @@ itself is a separate concern and is not part of this work.
 
 When the app unmounts or quits, it calls an idempotent manager shutdown method. Shutdown
 marks the manager closed so new sessions are rejected, requests cooperative cancellation
-through the existing task mechanism, stops playback, and closes the model adapter when it
-exposes `close()`. It waits for the active future for a bounded short timeout, then calls
-executor shutdown with pending futures cancelled and does not wait indefinitely for a
-non-cooperative adapter. A quit-during-generation test must verify that the application
-exits cleanly, rejects later submissions, and does not leave active playback or an
-unclosed model client. The ACE-Step HTTP adapter's `close()` closes its owned HTTPX
-client; adapters without resources may use a no-op cleanup path.
+through the existing task mechanism and stops playback. It waits for the active future for
+a fixed short timeout, then cancels pending futures. If an adapter does not honor
+cooperative cancellation, the app may remain alive until that current generation returns;
+Python cannot safely hard-kill a model thread inside the single process. The manager must
+not close a model adapter while its worker is still using it. Cleanup runs after worker
+termination, then closes the adapter and executor. Repeated shutdown calls are no-ops, and
+new sessions raise `RuntimeError("session manager is closed")`. A quit-during-generation
+test must verify the closed state, cancellation request, playback stop, safe delayed
+cleanup, and post-close rejection. The ACE-Step HTTP adapter's `close()` closes its owned
+HTTPX client; adapters without resources may use a no-op cleanup path.
 
 ## Code changes
 
@@ -79,8 +82,10 @@ manager methods directly. The manager's worker thread continues to handle genera
 The export screen will preserve its current user-facing error behavior by catching
 manager export errors rather than HTTP errors. Because `export_current()` copies files
 synchronously, the TUI will invoke it with `asyncio.to_thread` so export I/O does not block
-the Textual event loop. A test will use a deliberately slow export manager and verify that
-the handler yields while the copy is in progress.
+the Textual event loop. `SessionManager.export_current()` will capture the completed output
+path while holding its locks, release those locks, and perform file copying afterward. A
+test will use a deliberately slow export manager and verify that the handler yields while
+the copy is in progress.
 
 ### Runtime construction
 
