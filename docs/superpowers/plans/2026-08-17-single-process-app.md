@@ -257,12 +257,13 @@
   legacy `[server]` section with non-default host/port values still loads, those values do
   not appear in `AppConfig.model_dump()`, and generation/ACE-Step/theme settings remain
   intact. Add a regression test that `BackendClient.from_config()` uses standalone default
-  `ServerConfig()` without reloading `AppConfig`. Assert `httpx` remains a declared runtime
-  dependency in `pyproject.toml`.
+  `ServerConfig()` without reloading `AppConfig`, and a temporary API `main()` test that
+  captures `uvicorn.run()` and verifies standalone default host/port arguments. Assert
+  `httpx` remains a declared runtime dependency in `pyproject.toml`.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail.**
 
-  Run: `PYTHONPATH=src pytest tests/test_config.py -q`
+  Run: `PYTHONPATH=src pytest tests/test_config.py tests/test_backend_api.py tests/test_backend_client.py -q`
 
   Expected: current tests still expose `config.server` and the migration assertion fails.
 
