@@ -193,6 +193,7 @@ class SessionManager:
         )
 
     def stop_session(self) -> BackendStatus:
+        self._ensure_open()
         recent_sessions = self._recent_session_labels()
         with self._playback_lock:
             with self._lock:
@@ -677,8 +678,7 @@ class SessionManager:
         try:
             audio_path = Path(output_manager.save_wav(result, directory))
         except Exception:
-            if not self._is_active_task(task):
-                self._cleanup_output_artifacts(audio_path, metadata_path)
+            self._cleanup_output_artifacts(audio_path, metadata_path)
             raise
         if not self._is_active_task(task):
             self._cleanup_output_artifacts(audio_path, metadata_path)
@@ -700,8 +700,7 @@ class SessionManager:
         try:
             metadata_path = Path(output_manager.save_metadata(metadata, directory))
         except Exception:
-            if not self._is_active_task(task):
-                self._cleanup_output_artifacts(audio_path, metadata_path)
+            self._cleanup_output_artifacts(audio_path, metadata_path)
             raise
         if not self._is_active_task(task):
             self._cleanup_output_artifacts(audio_path, metadata_path)

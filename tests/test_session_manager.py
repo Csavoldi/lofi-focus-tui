@@ -854,6 +854,78 @@ def test_status_paths_do_not_read_history_while_state_lock_is_held(tmp_path):
     assert all(history_store.lock_free)
 
 
+def test_stop_session_rejects_closed_before_blocked_history_read(tmp_path):
+    class BlockingHistoryStore(HistoryStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.block_list = False
+            self.release_list = Event()
+
+        def list(self, limit=20):
+            if self.block_list:
+                self.release_list.wait(timeout=5.0)
+            return super().list(limit=limit)
+
+    history_store = BlockingHistoryStore(tmp_path / "history.jsonl")
+    manager = SessionManager(model=RecordingModel(), history_store=history_store)
+    manager.shutdown()
+    history_store.block_list = True
+    stop_errors = []
+
+    def run_stop():
+        try:
+            manager.stop_session()
+        except BaseException as exc:
+            stop_errors.append(exc)
+
+    stop_thread = Thread(target=run_stop, daemon=True)
+    started_at = time.monotonic()
+    stop_thread.start()
+    try:
+        stop_thread.join(timeout=0.5)
+        elapsed = time.monotonic() - started_at
+        assert not stop_thread.is_alive()
+        assert elapsed < 0.5
+    finally:
+        history_store.release_list.set()
+        stop_thread.join(timeout=1.0)
+
+    assert len(stop_errors) == 1
+    assert str(stop_errors[0]) == "session manager is closed"
+
+
+@pytest.mark.parametrize("failure", ["wav", "metadata"])
+def test_active_output_write_failure_cleans_partial_artifacts(tmp_path, failure):
+    output_manager = OutputManager(tmp_path / "outputs")
+    if failure == "wav":
+        def failing_save_wav(result, directory, filename="audio.wav"):
+            (directory / filename).write_bytes(b"partial audio")
+            raise OSError("save wav failed")
+
+        output_manager.save_wav = failing_save_wav
+    else:
+        def failing_save_metadata(metadata, directory):
+            (directory / "metadata.json").write_text("partial metadata", encoding="utf-8")
+            raise OSError("save metadata failed")
+
+        output_manager.save_metadata = failing_save_metadata
+
+    manager = SessionManager(
+        model=RecordingModel(),
+        output_manager=output_manager,
+        render_seconds_limit=1,
+    )
+    manager.start_session(make_request())
+    try:
+        status = manager.wait_for_active_task(timeout=1.0)
+        assert status.state == BackendState.ERROR
+        assert not list((tmp_path / "outputs").rglob("audio.wav"))
+        assert not list((tmp_path / "outputs").rglob("metadata.json"))
+        assert list((tmp_path / "outputs").iterdir()) == []
+    finally:
+        manager.shutdown()
+
+
 def test_shutdown_does_not_wait_for_blocked_history_snapshot(tmp_path):
     class BlockingHistoryStore(HistoryStore):
         def __init__(self, path):
