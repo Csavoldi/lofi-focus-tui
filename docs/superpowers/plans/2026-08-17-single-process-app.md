@@ -246,15 +246,19 @@
 **Files:**
 - Modify: `src/lofi_focus_tui/config.py`
 - Modify: `src/lofi_focus_tui/backend/api.py` to keep the temporary API shim runnable
+- Modify: `src/lofi_focus_tui/tui/backend_client.py` to use standalone `ServerConfig`
 - Modify: `config.example.toml`
 - Modify: `tests/test_config.py`
+- Modify: `tests/test_backend_api.py` and `tests/test_backend_client.py` for compatibility smoke coverage
 
 - [ ] **Step 1: Write failing config migration tests.**
 
   Assert the default `AppConfig` has no active `server` field, a TOML file containing a
   legacy `[server]` section with non-default host/port values still loads, those values do
   not appear in `AppConfig.model_dump()`, and generation/ACE-Step/theme settings remain
-  intact. Assert `httpx` remains a declared runtime dependency in `pyproject.toml`.
+  intact. Add a regression test that `BackendClient.from_config()` uses standalone default
+  `ServerConfig()` without reloading `AppConfig`. Assert `httpx` remains a declared runtime
+  dependency in `pyproject.toml`.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail.**
 
@@ -265,7 +269,9 @@
 - [ ] **Step 3: Remove active server configuration while preserving the temporary shim.**
 
   Remove the `AppConfig.server` field while keeping the standalone `ServerConfig` type
-  temporarily for `BackendClient.from_config()` and the compatibility API. Keep Pydantic’s
+  temporarily for `BackendClient.from_config()` and the compatibility API. Update
+  `BackendClient.from_config()` to use `config or ServerConfig()` rather than reading
+  `load_config().server`. Keep Pydantic’s
   default ignored-extra behavior so old `[server]` sections are accepted but not used.
   Update the temporary `backend/api.py` entry point to use standalone default server values
   rather than reading `AppConfig.server`. Update default assertions and add the explicit
@@ -277,12 +283,12 @@
 
 - [ ] **Step 5: Run config tests and commit.**
 
-  Run: `PYTHONPATH=src pytest tests/test_config.py -q`
+  Run: `PYTHONPATH=src pytest tests/test_config.py tests/test_backend_api.py tests/test_backend_client.py -q`
 
-  Expected: all config tests pass.
+  Expected: config tests and both temporary API/client compatibility suites pass.
 
   ```bash
-  git add src/lofi_focus_tui/config.py src/lofi_focus_tui/backend/api.py config.example.toml tests/test_config.py
+  git add src/lofi_focus_tui/config.py src/lofi_focus_tui/backend/api.py src/lofi_focus_tui/tui/backend_client.py config.example.toml tests/test_config.py tests/test_backend_api.py tests/test_backend_client.py
   git commit -m "refactor: remove local server configuration"
   ```
 
