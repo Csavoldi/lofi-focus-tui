@@ -62,6 +62,7 @@ After the service is ready and the config is created, run the Lofi app in anothe
 lofi
 ```
 
+The test uses `@pytest.mark.live` — run via `pytest -m live --no-header`.`
 Run the opt-in live gate:
 
 ```bash
