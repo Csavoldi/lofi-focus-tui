@@ -2,7 +2,7 @@
 
 Session-first terminal UI for AI-generated focus music.
 
-![TUI generating with ACE-Step](docs/tui-preview.png)
+![TUI playing a generated focus session](docs/tui-preview.png)
 
 The app owns prompt planning, ACE-Step integration, device selection, continuity checks,
 playback state, and cache in one process. The normal backend is ACE-Step over HTTP; mock
@@ -111,7 +111,16 @@ q       quit
 
 Focus, music preset, energy, style, and the free-form prompt are separate choices. The
 prompt engine combines them into an ACE-Step prompt while leaving room for custom text.
-See [`docs/usage.md`](docs/usage.md) for option meanings and guide behavior.
+
+Music comes from nine genre presets: `classic_lofi`, `neo_soul`, `ambient_tape`,
+`jazz_vinyl`, `lofi_house`, `synthwave`, `city_pop`, `boom_bap`, and `peaceful_piano`.
+Each preset carries its own tempo range — energy picks the soft, natural, or livelier
+end of it — and ten prompt variations with different lead sounds, drum feels, and
+basslines. The session seed picks the variation, so the same seed reproduces the same
+take while new sessions explore the pool. Style tags such as `rainy, mellow` or
+`neon, retro` layer extra texture over any preset.
+
+See [`docs/usage.md`](docs/usage.md) for the full option lists and guide behavior.
 
 ### Troubleshooting
 
