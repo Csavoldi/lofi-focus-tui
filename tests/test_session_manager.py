@@ -563,6 +563,21 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert playback.loaded.audio.shape == (2960,)
 
 
+def test_chunked_generation_records_numeric_durations_in_metadata():
+    model = ChunkRecordingModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(model=model, playback=playback, chunk_seconds=60)
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    manager.wait_for_active_task()
+
+    metadata = playback.loaded.metadata
+    assert metadata["chunk_count"] == 5
+    assert metadata["requested_duration_seconds"] == 300
+    assert isinstance(metadata["requested_duration_seconds"], int)
+    assert isinstance(metadata["actual_duration_seconds"], float)
+
+
 def test_chunked_generation_reuses_one_prompt_blueprint_lineage(monkeypatch):
     base_calls = []
     base_blueprints = []
