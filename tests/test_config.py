@@ -1,19 +1,49 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+import lofi_focus_tui.config as config_module
 from lofi_focus_tui.config import AppConfig, GenerationConfig, load_config
+
+
+@pytest.fixture(autouse=True)
+def _clear_config_environment(monkeypatch):
+    monkeypatch.delenv("LOFI_BACKEND", raising=False)
+    monkeypatch.delenv("ACESTEP_CHECKPOINT_PATH", raising=False)
 
 
 def test_default_config_loads_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATHS", [tmp_path / "config.toml"])
 
     config = load_config()
 
     assert isinstance(config, AppConfig)
-    assert config.server.host == "127.0.0.1"
-    assert config.server.port == 8765
-    assert config.generation.backend == "mock"
+    assert not hasattr(config_module, "Server" + "Config")
+    assert "server" not in config.model_dump()
+    assert not hasattr(config, "server")
+    assert config.generation.backend == "ace-step-http"
+    assert config.ace_step_http.base_url == "http://127.0.0.1:8001"
     assert config.generation.checkpoint_path == ""
+
+
+def test_config_without_backend_uses_http_default(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("[server]\n", encoding="utf-8")
+
+    config = load_config(path)
+
+    assert config.generation.backend == "ace-step-http"
+
+
+def test_generation_config_defaults_to_ten_minute_chunk_cap():
+    assert GenerationConfig().chunk_seconds == 600
+
+
+def test_generation_config_rejects_chunk_cap_above_ten_minutes():
+    with pytest.raises(ValidationError):
+        GenerationConfig(chunk_seconds=601)
 
 
 def test_config_loads_from_explicit_toml(tmp_path):
@@ -61,9 +91,30 @@ def test_missing_explicit_config_path_falls_back_to_default(tmp_path, monkeypatc
 
 def test_env_overrides_backend(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LOFI_BACKEND", "ace-step")
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+    monkeypatch.setenv("LOFI_BACKEND", "mock")
 
-    config = load_config()
+    config = load_config(path)
+
+    assert config.generation.backend == "mock"
+
+
+def test_unset_env_backend_preserves_toml_value(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+
+    config = load_config(path)
+
+    assert config.generation.backend == "ace-step"
+
+
+def test_empty_env_backend_preserves_toml_value(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("[generation]\nbackend = \"ace-step\"\n", encoding="utf-8")
+    monkeypatch.setenv("LOFI_BACKEND", "")
+
+    config = load_config(path)
 
     assert config.generation.backend == "ace-step"
 
@@ -137,3 +188,57 @@ def test_remote_execution_config_sections_load_from_toml(tmp_path):
     assert config.runpod.template_id == "template-1"
     assert config.runpod.volume_id == "volume-1"
     assert config.runpod.auto_destroy is False
+
+
+def test_legacy_server_section_is_ignored_while_other_settings_load(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                'theme = "forest"',
+                "",
+                "[server]",
+                'host = "192.0.2.44"',
+                "port = 9999",
+                "",
+                "[generation]",
+                'backend = "ace-step"',
+                "inference_steps = 44",
+                "",
+                "[playback]",
+                "volume = 0.35",
+                "",
+                "[ace_step_http]",
+                'base_url = "http://192.0.2.220:8001"',
+                'api_key = "secret"',
+                "",
+                "[runpod]",
+                'gpu_type = "NVIDIA RTX A6000"',
+                'template_id = "template-1"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert "server" not in config.model_dump()
+    assert config.theme == "forest"
+    assert config.generation.backend == "ace-step"
+    assert config.generation.inference_steps == 44
+    assert config.playback.volume == 0.35
+    assert config.ace_step_http.base_url == "http://192.0.2.220:8001"
+    assert config.ace_step_http.api_key == "secret"
+    assert config.runpod.gpu_type == "NVIDIA RTX A6000"
+    assert config.runpod.template_id == "template-1"
+
+
+def test_pyproject_keeps_httpx_runtime_dependency():
+    pyproject = config_module.tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+
+    assert any(
+        dependency.startswith("httpx")
+        for dependency in pyproject["project"]["dependencies"]
+    )

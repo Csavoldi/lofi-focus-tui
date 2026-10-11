@@ -25,31 +25,38 @@ endpoint, commands run, generated output paths, and pass/fail notes.
 
 4. Pass criteria:
    - Python, config, cache, and outputs checks are `ok`.
-   - Backend is either reachable or clearly reported as not running.
+   - Local Python, config, cache, outputs, compute-device selection, and optional ACE-Step/sounddevice availability checks are accurate; verify external ACE-Step availability separately by starting the service and using `lofi` to generate audio in Gate 3.
    - Optional ACE-Step/playback warnings match the selected test environment.
 
 ## Gate 2: Mock Mode Workflow
 
-1. Ensure `generation.backend = "mock"` in `config.toml`, or remove local config.
-2. Start the backend:
+1. Ensure `generation.backend = "mock"` in `config.toml`, or use the explicit one-process
+   command below.
+2. Start the app:
 
    ```bash
-   lofi-backend
+   LOFI_BACKEND=mock lofi
    ```
 
-3. Start the TUI in a second terminal:
-
-   ```bash
-   lofi
-   ```
-
-4. Exercise the TUI:
-   - Cycle preset, duration, energy, and style.
+3. Exercise the TUI:
+   - Change focus, music preset, duration, energy, and style.
+   - Start a fresh run with `focus=coding`, `preset=ambient_tape`, `energy=steady`, and `style_tags=["rainy", "mellow"]`.
+   - Verify `request.focus == "coding"`, `request.preset == "ambient_tape"`, `plan.focus == "coding"`, and `plan.preset == "ambient_tape"`.
+   - Verify the prompt includes concrete traits: consistent forward pulse, stable groove, no abrupt changes, sparse washed pad motif, minimal soft pulse, and long sustained low movement.
+   - Verify the guide opens with `h`, closes with `Escape` or `h`, selection and session actions are suppressed while it is open, and q remains global quit.
+   - Start a fresh run, open the guide with `h`, press `Escape`, and verify:
+     ```text
+     fresh run closes with Escape
+     ```
+   - Start another fresh run, open the guide with `h`, press `h`, and verify:
+     ```text
+     fresh run closes with h
+     ```
    - Start a session.
    - Pause, resume, stop, and refresh.
    - Confirm status, progress, playback mode, chunk status, and recent history are legible.
 
-5. Pass criteria:
+4. Pass criteria:
    - The app does not crash.
    - Status updates are understandable.
    - Saved output contains `audio.wav` and `metadata.json`.
@@ -82,7 +89,7 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/v1/models
 ```
 
-Example `config.toml`:
+Create `config.toml` in the Lofi repository before starting the app:
 
 ```toml
 [generation]
@@ -94,6 +101,13 @@ batch_size = 1
 [ace_step_http]
 base_url = "http://127.0.0.1:8001"
 timeout_seconds = 1800.0
+```
+
+Port `8001` belongs only to the separate ACE-Step HTTP service. After the service is ready
+and the config is created, start the Lofi app in another terminal:
+
+```bash
+lofi
 ```
 
 1. Run the direct live gate:
@@ -109,10 +123,8 @@ timeout_seconds = 1800.0
    pytest tests/test_live_ace_step_http.py -v
    ```
 
-2. Start `lofi-backend`.
-3. Start `lofi`.
-4. Cycle duration to `5 minutes`.
-5. Start a session.
+2. Cycle duration to `5 minutes`.
+3. Start a session.
 
 Pass criteria:
 - `tests/test_live_ace_step_http.py` passes and writes evidence under `.uat/ace-step-http/`.

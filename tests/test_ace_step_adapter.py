@@ -6,9 +6,10 @@ from pathlib import Path
 import numpy as np
 
 from lofi_focus_tui.audio.wav import read_wav_file
-from lofi_focus_tui.composition import create_blueprint
+from lofi_focus_tui.composition import create_blueprint, create_chunk_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
-from lofi_focus_tui.generation.ace_step import AceStepAdapter
+from lofi_focus_tui.generation.ace_step import AceStepAdapter, _blueprint_to_prompt
+from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
@@ -45,7 +46,8 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
+            focus="deep_work",
+            preset="classic_lofi",
             duration_minutes=30,
             energy=EnergyLevel.STEADY,
             style_tags=["lofi"],
@@ -60,7 +62,106 @@ def test_ace_step_adapter_calls_pipeline_with_blueprint_prompt(tmp_path):
     assert result.duration_seconds == 2
     assert result.audio.shape[0] == 88200
     assert fake_pipeline.calls[0]["audio_duration"] == 2
-    assert str(blueprint.tempo_bpm) in fake_pipeline.calls[0]["prompt"]
+    assert fake_pipeline.calls[0]["lyrics"] == "[Instrumental]"
+    prompt = fake_pipeline.calls[0]["prompt"]
+    assert "relaxed instrumental lo-fi" in prompt
+    assert str(blueprint.tempo_bpm) not in prompt
+
+
+def test_ace_step_adapter_sends_empty_lyrics_for_vocal_mode(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            vocal_mode="vocals",
+        )
+    )
+
+    adapter.generate(create_blueprint(plan), duration_seconds=1)
+
+    assert fake_pipeline.calls[0]["lyrics"] == ""
+    assert "thinking" not in fake_pipeline.calls[0]
+
+
+def test_blueprint_prompt_includes_focus_recipes_and_boundaries():
+    plan = expand_preset(
+        SessionRequest(
+            focus="coding",
+            preset="ambient_tape",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            seed=123,
+        )
+    )
+    blueprint = create_blueprint(plan)
+
+    prompt = _blueprint_to_prompt(blueprint)
+
+    assert "steady forward momentum with a consistent groove" in prompt
+    assert "relaxed instrumental lo-fi" in prompt
+    assert blueprint.motif in prompt
+    assert blueprint.drum_feel in prompt
+    assert blueprint.bass_behavior in prompt
+    for constraint in ("steady consistent tempo", "consistent key center",
+                       "recurring signature motif", "smooth section transitions"):
+        assert constraint in prompt
+    lowered = prompt.lower()
+    assert "no " not in lowered and "avoid " not in lowered
+    assert prompt == compose_local_prompt(blueprint)
+
+
+def test_chunk_blueprint_prompt_includes_focus_recipes_and_boundaries(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="reading",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+            seed=123,
+        )
+    )
+    blueprint = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+
+    adapter.generate(blueprint, duration_seconds=1)
+    prompt = fake_pipeline.calls[0]["prompt"]
+
+    assert blueprint.section == "reading"
+    assert "calm main section" in prompt
+    assert "spacious and calm with a gentle pulse" in prompt
+    assert fake_pipeline.calls[0]["lyrics"] == "[Main Theme - steady]"
+
+
+def test_ace_step_adapter_adds_continuation_constraints_to_prompt(tmp_path):
+    fake_pipeline = FakePipeline()
+    adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+    blueprint = create_blueprint(plan).model_copy(
+        update={
+            "continuation_constraints": [
+                "match the previous chunk's loudness at the transition",
+                "continue the established timbral balance into the next section",
+            ]
+        }
+    )
+
+    adapter.generate(blueprint, duration_seconds=1)
+    prompt = fake_pipeline.calls[0]["prompt"]
+
+    assert "timbre carried consistently from the previous section" in prompt
+    assert "loudness" not in prompt
 
 
 def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
@@ -68,7 +169,8 @@ def test_ace_step_adapter_passes_generation_settings_to_pipeline(tmp_path):
     adapter = AceStepAdapter(pipeline=fake_pipeline, output_dir=tmp_path)
     plan = expand_preset(
         SessionRequest(
-            preset="deep_work",
+            focus="deep_work",
+            preset="classic_lofi",
             duration_minutes=30,
             energy=EnergyLevel.STEADY,
             seed=123,

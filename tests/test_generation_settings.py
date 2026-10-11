@@ -8,8 +8,8 @@ def test_generation_settings_defaults_match_expected_values():
     settings = GenerationSettings()
 
     assert settings.output_format == "wav"
-    assert settings.inference_steps == 27
-    assert settings.guidance_scale == 15.0
+    assert settings.inference_steps == 8
+    assert settings.guidance_scale == 7.0
     assert settings.batch_size == 1
     assert settings.seed == -1
     assert settings.scheduler_type == "euler"

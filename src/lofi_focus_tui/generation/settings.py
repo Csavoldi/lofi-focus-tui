@@ -5,8 +5,10 @@ VALID_OUTPUT_FORMATS = ("wav",)
 
 class GenerationSettings(BaseModel):
     output_format: str = "wav"
-    inference_steps: int = Field(default=27, ge=1, le=100)
-    guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
+    # ACE-Step 1.5 turbo defaults (8 steps, no CFG); base/sft models want 32-50
+    # steps with guidance_scale near 7.0.
+    inference_steps: int = Field(default=8, ge=1, le=100)
+    guidance_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     batch_size: int = Field(default=1, ge=1, le=8)
     seed: int = Field(default=-1, ge=-1)
     scheduler_type: str = "euler"

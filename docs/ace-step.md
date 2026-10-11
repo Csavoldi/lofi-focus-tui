@@ -1,6 +1,8 @@
 # ACE-Step
 
-ACE-Step support is optional. Mock mode remains the default for development and CI.
+ACE-Step HTTP is the default backend using the separate service at
+`http://127.0.0.1:8001`; port `8001` belongs only to that service. Mock mode is an explicit
+alternative for development and CI.
 
 ## ACE-Step-1.5 HTTP Mode
 
@@ -39,7 +41,7 @@ curl http://127.0.0.1:8001/health
 curl http://127.0.0.1:8001/v1/models
 ```
 
-Configure this app:
+Create `config.toml` in the Lofi repository before starting `lofi`:
 
 ```toml
 [generation]
@@ -52,6 +54,12 @@ batch_size = 1
 base_url = "http://127.0.0.1:8001"
 api_key = ""
 timeout_seconds = 1800.0
+```
+
+After the service is ready and the config is created, run the Lofi app in another terminal:
+
+```bash
+lofi
 ```
 
 Run the opt-in live gate:
@@ -136,6 +144,33 @@ auto_destroy = true
 
 The first implementation keeps RunPod optional and exposes a selectable remote adapter. Pod create/destroy lifecycle automation can be layered on top without changing the TUI/backend contract.
 
+## Prompting ACE-Step-1.5
+
+Prompts follow the upstream `docs/en/Tutorial.md` guidance: the caption is the most
+important input and must read like a music description, while technical values are passed
+as metadata fields, never as caption text.
+
+`src/lofi_focus_tui/generation/prompt_engine.py` composes each request:
+
+- **Caption** (`compose_local_prompt`): natural language covering mood, genre
+  ("relaxed instrumental lo-fi"), instruments (preset motif/drum/bass recipes), style
+  tags, focus intent, and the chunk section. Constraints are rewritten positively
+  ("no abrupt changes" becomes "smooth transitions"); mixing instructions such as
+  loudness matching are dropped because the app enforces them in audio post-processing.
+- **Lyrics** (`compose_instrumental_lyrics`): `[Instrumental]` for single generations;
+  chunked sessions use section structure tags instead, e.g. `[Intro - steady]`,
+  `[Main Theme - steady]`, `[Build - driving]`, `[Outro - gentle]`.
+- **Metadata** (`bpm`, `key_scale`, `time_signature`, `audio_duration`): sent as
+  `/release_task` fields and mirrored into `/format_input`'s `param_obj`. The app's
+  `minor pentatonic` key center maps to `A minor` for the `key_scale` anchor
+  (`key_scale_for_metadata`).
+- **Enrichment**: the composed caption goes through `/format_input` for LM rewriting;
+  the returned caption is appended after the user's own wording
+  (`compose_enriched_prompt`, capped at 1024 characters).
+
+Generation defaults follow the 1.5 turbo recommendations: `inference_steps = 8` and
+`guidance_scale = 7.0` (guidance only affects base/sft models).
+
 ## Diagnostics
 
 Run:
@@ -144,7 +179,9 @@ Run:
 lofi-doctor
 ```
 
-Use warnings about missing optional packages or unavailable backend ports to decide which extra to install or which service to start.
+Use local Python, config, cache, outputs, and compute-device selection checks, plus optional
+ACE-Step and sounddevice availability warnings, to prepare the environment. Verify external
+ACE-Step availability by starting the service and using `lofi` to run a generation.
 
 ## Acceptance
 

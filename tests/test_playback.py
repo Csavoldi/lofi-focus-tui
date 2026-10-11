@@ -19,6 +19,8 @@ def make_result() -> GenerationResult:
 class FakePlayer:
     def __init__(self) -> None:
         self.calls = []
+        self.position = 0.0
+        self.duration = 60.0
 
     def play(self, audio: np.ndarray, sample_rate: int, volume: float = 1.0) -> None:
         self.calls.append(("play", audio, sample_rate, volume))
@@ -31,6 +33,25 @@ class FakePlayer:
 
     def stop(self) -> None:
         self.calls.append(("stop",))
+
+    def set_volume(self, volume: float) -> None:
+        self.calls.append(("set_volume", volume))
+
+    def seek(self, seconds: float) -> bool:
+        self.calls.append(("seek", seconds))
+        self.position = max(0.0, min(self.duration, self.position + seconds))
+        return True
+
+    def restart(self) -> bool:
+        self.calls.append(("restart",))
+        self.position = 0.0
+        return True
+
+    def position_seconds(self) -> float:
+        return self.position
+
+    def duration_seconds(self) -> float:
+        return self.duration
 
 
 class FailingPlayer(FakePlayer):
@@ -133,6 +154,44 @@ def test_resume_keeps_paused_state_when_player_cannot_resume():
     assert player.calls == [("resume",)]
 
 
+def test_adjust_volume_clamps_and_updates_loaded_player():
+    player = FakePlayer()
+    manager = PlaybackManager(player=player, volume=0.8)
+    manager.load(make_result())
+    player.calls.clear()
+
+    assert manager.adjust_volume(0.5) is True
+    assert manager.volume == 1.0
+    assert player.calls == [("set_volume", 1.0)]
+
+    assert manager.adjust_volume(-2.0) is True
+    assert manager.volume == 0.0
+    assert player.calls[-1] == ("set_volume", 0.0)
+
+
+def test_seek_and_restart_delegate_to_loaded_player():
+    player = FakePlayer()
+    manager = PlaybackManager(player=player)
+    manager.load(make_result())
+    player.calls.clear()
+
+    assert manager.seek(10.0) is True
+    assert manager.restart() is True
+    assert player.calls == [("seek", 10.0), ("restart",)]
+    assert manager.position_seconds == 0.0
+    assert manager.duration_seconds == 60.0
+
+
+def test_navigation_without_loaded_audio_returns_false():
+    player = FakePlayer()
+    manager = PlaybackManager(player=player)
+
+    assert manager.adjust_volume(0.1) is False
+    assert manager.seek(10.0) is False
+    assert manager.restart() is False
+    assert player.calls == []
+
+
 def test_stop_clears_current_and_paused_then_calls_player_stop():
     player = FakePlayer()
     manager = PlaybackManager(player=player)
@@ -168,7 +227,16 @@ def test_null_player_records_last_audio_and_state():
     assert player.state == "playing"
     assert player.sample_rate == 48000
     assert player.volume == 0.25
+    assert player.duration_seconds() == 2 / 48000
+    assert player.position_seconds() == 0.0
     np.testing.assert_array_equal(player.audio, audio)
+
+    player.set_volume(0.5)
+    assert player.volume == 0.5
+    player.seek(1.0)
+    assert player.position_seconds() == player.duration_seconds()
+    player.restart()
+    assert player.position_seconds() == 0.0
 
     player.pause()
     assert player.state == "paused"

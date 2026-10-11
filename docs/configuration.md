@@ -2,39 +2,60 @@
 
 `lofi-focus-tui` loads configuration from `config.toml` in the current directory, then from `~/.config/lofi-focus-tui/config.toml`. Missing files use defaults.
 
-See `config.example.toml` for a complete starting point.
+The application default is `ace-step-http` using `http://127.0.0.1:8001`. The committed
+`config.example.toml` shows every section with the application defaults; copy it to
+`config.toml` and edit the values for your machine. Port `8001` is used only by the
+separate ACE-Step HTTP service. For an offline run, use
+`LOFI_BACKEND=mock lofi`.
 
-## Server
+focus and music preset are separate API fields.
+API requests carry separate focus and music preset fields: `focus` and `preset`.
+omitted focus and null focus follow the same normalization path.
+legacy focus-valued presets map to matching focus plus classic_lofi.
+This migration applies only when focus is omitted or null.
+valid music preset values default the separate focus field to deep_work.
+This defaulting applies only when focus is omitted or null.
+An explicit valid focus is preserved with a valid music preset.
+An explicit non-null focus plus a legacy focus-valued preset is rejected.
+no TOML keys change.
 
-```toml
-[server]
-host = "127.0.0.1"
-port = 8765
-```
-
-The backend listens on this host and port. The TUI client uses the same values when created from config.
+The app and its generation backend run in one process. The app does not listen on a Lofi
+HTTP port.
 
 ## Generation
 
 ```toml
 [generation]
-backend = "mock"
+backend = "ace-step-http"
 output_format = "wav"
-inference_steps = 27
-guidance_scale = 15.0
+# ACE-Step-1.5 turbo defaults: 8 steps, no CFG. Base/sft models want 32-50
+# steps with guidance_scale near 7.0.
+inference_steps = 8
+guidance_scale = 7.0
 batch_size = 1
-chunk_seconds = 30
+chunk_seconds = 600
 checkpoint_path = ""
 ```
 
+`ace-step-http` is the default backend and connects to the separate ACE-Step HTTP service
+at `http://127.0.0.1:8001`.
+
 Backends:
 
-- `mock`: deterministic local test generator.
+- `mock`: deterministic local test generator for explicit development fallback.
 - `ace-step`: embedded ACE-Step Python pipeline.
 - `ace-step-http`: local or remote ACE-Step HTTP server.
 - `runpod`: RunPod-style remote adapter over a configured ACE-Step HTTP endpoint.
 
-`chunk_seconds` controls long-session chunk size. Chunks are checked for continuity and stitched with crossfades.
+`chunk_seconds` is the maximum chunk size and defaults to 600 seconds (10 minutes). The
+session policy uses one 300-second chunk for a 5-minute request and chunks up to 600 seconds
+for longer requests; the final chunk can be shorter. Set a lower value between 10 and 600
+seconds to cap chunk size for a constrained machine.
+
+Each generated chunk is checked for loudness, clipping, silence, boundary clicks, and
+spectral changes. Ordinary warnings become continuation notes for the following chunk.
+Severe boundaries retry once with corrective prompt constraints. Accepted chunks are joined
+with the existing fixed crossfade.
 `batch_size` is passed to ACE-Step backends.
 
 ## Playback
@@ -49,6 +70,9 @@ Playback uses `sounddevice` when installed and falls back to a null player in un
 `fade_seconds` applies a fade to playback audio without changing the saved WAV.
 
 ## ACE-Step-1.5 HTTP
+
+Start the separate ACE-Step HTTP service before running `lofi`. Its port `8001` belongs to
+that service, not to the Lofi app.
 
 ```toml
 [ace_step_http]

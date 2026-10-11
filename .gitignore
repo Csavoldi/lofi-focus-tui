@@ -11,3 +11,4 @@ build/
 *.mp3
 *.flac
 .worktrees/
+config.toml

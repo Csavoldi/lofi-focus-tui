@@ -1,5 +1,4 @@
 import importlib.util
-import socket
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -7,11 +6,10 @@ from pathlib import Path
 from typing import Literal
 
 from lofi_focus_tui.audio.cache import default_cache_dir, default_output_dir
-from lofi_focus_tui.config import AppConfig, load_config
+from lofi_focus_tui.config import load_config
 from lofi_focus_tui.devices import choose_device
 
 DiagnosticStatus = Literal["ok", "warn", "fail"]
-PortProbe = Callable[[str, int], bool]
 ImportChecker = Callable[[str], bool]
 
 
@@ -25,28 +23,16 @@ class DiagnosticCheck:
 def run_diagnostics(
     config_path: Path | None = None,
     cache_dir: Path | None = None,
-    port_probe: PortProbe | None = None,
     import_checker: ImportChecker | None = None,
 ) -> list[DiagnosticCheck]:
-    port_probe = port_probe or _probe_port
     import_checker = import_checker or _module_available
     checks = [_check_python()]
 
-    config = AppConfig()
     try:
-        config = load_config(config_path)
+        load_config(config_path)
         checks.append(DiagnosticCheck("config", "ok", "loaded"))
     except Exception as exc:
         checks.append(DiagnosticCheck("config", "fail", str(exc)))
-
-    backend_ok = port_probe(config.server.host, config.server.port)
-    backend_status: DiagnosticStatus = "ok" if backend_ok else "warn"
-    backend_message = (
-        f"reachable at {config.server.host}:{config.server.port}"
-        if backend_ok
-        else f"not reachable at {config.server.host}:{config.server.port}"
-    )
-    checks.append(DiagnosticCheck("backend", backend_status, backend_message))
 
     checks.append(_check_optional_import("ace-step", "acestep", import_checker))
     checks.append(_check_optional_import("sounddevice", "sounddevice", import_checker))
@@ -101,11 +87,3 @@ def _check_writable(name: str, path: Path) -> DiagnosticCheck:
 
 def _module_available(module: str) -> bool:
     return importlib.util.find_spec(module) is not None
-
-
-def _probe_port(host: str, port: int) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=0.2):
-            return True
-    except OSError:
-        return False

@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from lofi_focus_tui.options import LEGACY_FOCUS_VALUES, PRESET_OPTIONS, MusicPresetValue
 
 
 class SessionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     session_id: str
     preset: str
+    focus: str = "deep_work"
     created_at: str
     duration_seconds: int
     audio_path: str
@@ -17,6 +24,30 @@ class SessionRecord(BaseModel):
     seed: int
     tags: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_preset(cls, values):
+        if not isinstance(values, dict) or values.get("focus") is not None:
+            return values
+
+        values = dict(values)
+        tags = values.get("tags")
+        tags = [tag for tag in tags if isinstance(tag, str)] if isinstance(tags, list) else []
+        values["tags"] = tags
+        preset = values.get("preset")
+        if isinstance(preset, str) and preset in LEGACY_FOCUS_VALUES:
+            values["focus"] = preset
+            values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
+        elif isinstance(preset, str) and preset in PRESET_OPTIONS:
+            values["focus"] = "deep_work"
+        else:
+            values["focus"] = "deep_work"
+            values["preset"] = MusicPresetValue.CLASSIC_LOFI.value
+            legacy_tag = f"legacy_preset:{preset}"
+            if legacy_tag not in tags:
+                tags.append(legacy_tag)
+        return values
+
 
 class HistoryStore:
     def __init__(self, path: Path) -> None:
@@ -24,8 +55,9 @@ class HistoryStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def append(self, record: SessionRecord) -> None:
-        with self.path.open("a", encoding="utf-8") as history_file:
-            history_file.write(record.model_dump_json() + "\n")
+        records = self._read_records()
+        records.append(record)
+        self._write_records(records)
 
     def list(self, limit: int = 20) -> list[SessionRecord]:
         records = self._read_records()
@@ -60,6 +92,26 @@ class HistoryStore:
         return records
 
     def _write_records(self, records: list[SessionRecord]) -> None:
-        with self.path.open("w", encoding="utf-8") as history_file:
-            for record in records:
-                history_file.write(record.model_dump_json() + "\n")
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as history_file:
+                temporary_path = Path(history_file.name)
+                for record in records:
+                    history_file.write(record.model_dump_json() + "\n")
+                history_file.flush()
+                os.fsync(history_file.fileno())
+            os.replace(temporary_path, self.path)
+        except BaseException:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
