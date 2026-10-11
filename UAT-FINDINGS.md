@@ -8,6 +8,9 @@ session; nothing here blocks release except where marked.
 ## Issues to fix
 
 ### 1. [P2] Backend hangs for the full timeout when the ACE-Step port is firewall-dropped
+**Resolved:** 080cb07 — adapter now defaults to a 10s connect timeout separate from the
+1800s task timeout and raises `RuntimeError: cannot reach ACE-Step service at <base_url>`
+on connection errors (rendered in the TUI via finding 2's fix).
 - **Observed:** with `base_url = http://192.168.2.220:9999` (host reachable, port
   silently DROPped by the remote firewall), the app sat in `state: generating`,
   `message: generating`, `progress: 50%` for 120s+ (test stopped there) and would hang
@@ -24,6 +27,8 @@ session; nothing here blocks release except where marked.
   task stalls."
 
 ### 2. [P3] Error reason is captured but never shown in the TUI
+**Resolved:** 1ea597b — `render_status` appends an `error: <reason>` line (dim) under the
+message when `state == "error"` and a reason is present.
 - **Observed:** Gate 5 (bad URL that refuses): TUI shows only `state: error`,
   `message: generation failed` (rendered in red — see `/tmp/lofi_uat/lofi_5_error.png`).
   The underlying cause (e.g. connection refused) never appears.
@@ -35,6 +40,8 @@ session; nothing here blocks release except where marked.
   `state == "error"`.
 
 ### 3. [P3] Modal screens are flush-left / full-bleed instead of centered
+**Resolved:** 878c08b — `#option-guide` and the export-screen widgets get `width: 64`, so
+the existing `align: center middle` rule centers them like the main screen.
 - **Observed:** option guide (`h`) and export dialog (`e`) render at column 0 and the
   export Input spans the full terminal width (verified at 110×50), while every main
   screen widget is centered at 64 columns. Screenshots: `/tmp/lofi_uat/lofi_3_guide.png`,
@@ -48,6 +55,9 @@ session; nothing here blocks release except where marked.
   appropriate max-width) so modals match the main layout.
 
 ### 4. [P4] Prompt input border is nearly invisible on the idle screen
+**Resolved:** 05e5a76 — `#prompt` gets `border: round #666666` (the default was a
+`#191919` tall border, effectively invisible on dark backgrounds; a fixed neutral gray
+is used because `city_pop.label` is the style name "dim", not a color).
 - **Observed:** on the main screen the empty prompt Input reads as a faint dark box;
   its border blends into the background (city_pop theme). After typing, the text is
   clear but the control boundary stays subtle.
@@ -55,6 +65,8 @@ session; nothing here blocks release except where marked.
   `src/lofi_focus_tui/tui/app.py` CSS.
 
 ### 5. [P4] Generation-block durations in metadata.json are strings
+**Resolved:** ae439de — `_stitch_chunk_results` now emits `chunk_count` (int),
+`requested_duration_seconds` (int) and `actual_duration_seconds` (float) as numbers.
 - **Observed:** `generation.requested_duration_seconds` is `"1500"` and
   `generation.actual_duration_seconds` is `"1496.000000"` (JSON strings), while the
   top-level `duration_seconds` / `actual_duration_seconds` are numeric. Consumers must

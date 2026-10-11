@@ -39,7 +39,7 @@
 - Consumes: existing `httpx.Client`, `httpx.MockTransport` test pattern.
 - Produces: `AceStepHttpAdapter(..., connect_timeout_seconds: float = 10.0)`; private helpers `_request_timeout(read_seconds: float | None = None) -> httpx.Timeout`, `_post(path: str, json: dict, timeout: httpx.Timeout | None = None) -> httpx.Response`, `_get(path: str, params: dict) -> httpx.Response`. `_post`/`_get` attach `self._headers()` and translate `(httpx.ConnectError, httpx.ConnectTimeout)` into `RuntimeError(f"cannot reach ACE-Step service at {self.base_url}: {exc}")` (chained `from exc`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_http_ace_step.py` add:
 
@@ -80,12 +80,12 @@ assert request.extensions["timeout"] == {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `.venv/bin/python -m pytest tests/test_http_ace_step.py -v -k "short_connect_timeout or wraps_unreachable"`
 Expected: FAIL (connect is 1800.0; ConnectTimeout propagates as httpx error, not RuntimeError) — plus the updated assertion fails.
 
-- [ ] **Step 3: Implement in `http_ace_step.py`**
+- [x] **Step 3: Implement in `http_ace_step.py`**
 
 - Constructor: add `connect_timeout_seconds: float = 10.0` parameter; store as attribute; build the default client with `timeout=self._request_timeout()` instead of `timeout=timeout_seconds`.
 - `_request_timeout`: `read = self.timeout_seconds if read_seconds is None else min(read_seconds, self.timeout_seconds)`; return `httpx.Timeout(connect=self.connect_timeout_seconds, read=read, write=read, pool=read)`.
@@ -93,12 +93,12 @@ Expected: FAIL (connect is 1800.0; ConnectTimeout propagates as httpx error, not
 - Replace call sites: `submit_task` `/release_task` POST (and `/format_input` POST keeps raw client call but uses `timeout=self._request_timeout(30.0)` in place of `timeout=min(30.0, self.timeout_seconds)`), `query_result`, `download_audio`.
 - `RunPodAceStepAdapter` needs no change (inherits).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_http_ace_step.py -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lofi_focus_tui/generation/http_ace_step.py tests/test_http_ace_step.py
@@ -117,7 +117,7 @@ git commit -m "fix: fail fast when the ACE-Step service is unreachable"
 - Consumes: `BackendStatus.error` (`src/lofi_focus_tui/domain.py:184`), `_field_line` helper, `theme.desc`.
 - Produces: `render_status` output gains a trailing `error: <reason>` line (style `theme.desc`) exactly when `_enum_value(status.state) == "error"` and `status.error` is truthy.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_render_status_shows_error_reason_only_in_error_state():
@@ -134,12 +134,12 @@ def test_render_status_shows_error_reason_only_in_error_state():
 
 (Import `render_status` and `BackendState` in the test module if not already imported.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py::test_render_status_shows_error_reason_only_in_error_state -v`
 Expected: FAIL — "error: connection refused" not in rendered output.
 
-- [ ] **Step 3: Implement in `render_status`**
+- [x] **Step 3: Implement in `render_status`**
 
 After the `message` line is appended (before the `chunk_count` block), append:
 
@@ -148,12 +148,12 @@ if state == "error" and status.error:
     lines.append(_field_line("error", status.error, theme.desc))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lofi_focus_tui/tui/widgets.py tests/test_tui_app.py
@@ -172,7 +172,7 @@ git commit -m "feat: show the backend error reason in the status panel"
 - Consumes: existing `Screen { align: center middle; }` rule (centering is a no-op at width 100%; giving the modal children `width: 64` activates it).
 - Produces: CSS rule `#option-guide, #export-prompt, #export-directory, #export-error { width: 64; }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 @pytest.mark.asyncio
@@ -192,12 +192,12 @@ async def test_tui_modal_screens_center_their_content_at_110_columns():
         assert export_input.region.x == (110 - 64) // 2
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py::test_tui_modal_screens_center_their_content_at_110_columns -v`
 Expected: FAIL — width is 110 (full bleed) / x is 0.
 
-- [ ] **Step 3: Add the CSS rule in `LofiFocusApp.CSS`**
+- [x] **Step 3: Add the CSS rule in `LofiFocusApp.CSS`**
 
 ```css
 #option-guide, #export-prompt, #export-directory, #export-error {
@@ -205,12 +205,12 @@ Expected: FAIL — width is 110 (full bleed) / x is 0.
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lofi_focus_tui/tui/app.py tests/test_tui_app.py
@@ -229,7 +229,7 @@ git commit -m "fix: center option-guide and export modal content"
 - Consumes: Textual app CSS (higher precedence than the widget default border).
 - Produces: `#prompt { border: round #666666; }` — a neutral mid-gray that reads against a dark terminal across all 10 themes (theme `label` colors are unreliable here: `city_pop.label` is the rich style name `"dim"`, not a color).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_prompt_input_border_is_styled_and_visible():
@@ -244,12 +244,12 @@ def test_prompt_input_border_is_styled_and_visible():
 
 (Decorate with `@pytest.mark.asyncio` to match neighboring async tests.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py::test_prompt_input_border_is_styled_and_visible -v`
 Expected: FAIL — default Input border is not round/#666666.
 
-- [ ] **Step 3: Add the CSS rule**
+- [x] **Step 3: Add the CSS rule**
 
 In `LofiFocusApp.CSS`, append:
 
@@ -259,12 +259,12 @@ In `LofiFocusApp.CSS`, append:
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_tui_app.py -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lofi_focus_tui/tui/app.py tests/test_tui_app.py
@@ -283,7 +283,7 @@ git commit -m "fix: give the prompt input a visible border"
 - Consumes: `ChunkRecordingModel` + `RecordingPlayback` fixtures (tests), `RecordingPlayback.loaded` (stitched `GenerationResult`).
 - Produces: `result.metadata["chunk_count"]` as `int`, `["requested_duration_seconds"]` as `int`, `["actual_duration_seconds"]` as `float` (plain `len(audio) / sample_rate`, matching the top-level metadata fields' types).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_chunked_generation_records_numeric_durations_in_metadata():
@@ -301,12 +301,12 @@ def test_chunked_generation_records_numeric_durations_in_metadata():
     assert isinstance(metadata["actual_duration_seconds"], float)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_session_manager.py::test_chunked_generation_records_numeric_durations_in_metadata -v`
 Expected: FAIL — values are `"300"` (str) and `str`/`"1500.000000"`-style strings.
 
-- [ ] **Step 3: Implement in `_stitch_chunk_results`**
+- [x] **Step 3: Implement in `_stitch_chunk_results`**
 
 Replace the metadata update values with:
 
@@ -316,12 +316,12 @@ Replace the metadata update values with:
 "actual_duration_seconds": len(audio) / sample_rate,
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest tests/test_session_manager.py tests/test_output_history.py tests/test_project_metadata.py -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lofi_focus_tui/backend/session_manager.py tests/test_session_manager.py
@@ -338,16 +338,16 @@ git commit -m "fix: record generation durations as numbers in metadata"
 
 **Interfaces:** none.
 
-- [ ] **Step 1: Full gate**
+- [x] **Step 1: Full gate**
 
 Run: `.venv/bin/ruff check src tests && .venv/bin/python -m pytest -q`
 Expected: 0 lint errors; all tests pass, 1 skipped (live gate needs env var).
 
-- [ ] **Step 2: Update `UAT-FINDINGS.md`**
+- [x] **Step 2: Update `UAT-FINDINGS.md`**
 
 Under each of the 5 issue headings, append one line: `**Resolved:** <commit short-hash> (<one-line what changed>).` Keep the observed/cause text intact — the file stays the running issues log.
 
-- [ ] **Step 3: Commit and push to `dev`**
+- [x] **Step 3: Commit and push to `dev`**
 
 ```bash
 git add UAT-FINDINGS.md docs/superpowers/plans/2026-10-11-uat-remediation.md
