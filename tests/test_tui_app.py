@@ -86,6 +86,17 @@ async def test_tui_composes_blurred_prompt_editor_with_max_length():
 
 
 @pytest.mark.asyncio
+async def test_prompt_input_border_is_styled_and_visible():
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
+
+    async with app.run_test() as pilot:
+        border = pilot.app.query_one("#prompt", Input).styles.border_top
+
+    assert border[0] == "round"
+    assert border[1].hex == "#666666"
+
+
+@pytest.mark.asyncio
 async def test_tui_prompt_focus_lifecycle_preserves_editor_value():
     app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
 
