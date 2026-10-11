@@ -642,6 +642,23 @@ async def test_tui_option_guide_renders_every_shared_catalog_description():
 
 
 @pytest.mark.asyncio
+async def test_tui_modal_screens_center_their_content_at_110_columns():
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
+
+    async with app.run_test(size=(110, 50)) as pilot:
+        await pilot.press("h")
+        guide = pilot.app.screen.query_one("#option-guide")
+        assert guide.region.width == 64
+        assert guide.region.x == (110 - 64) // 2
+
+        await pilot.press("escape")
+        await pilot.press("e")
+        export_input = pilot.app.screen.query_one("#export-directory", Input)
+        assert export_input.region.width == 64
+        assert export_input.region.x == (110 - 64) // 2
+
+
+@pytest.mark.asyncio
 async def test_tui_option_guide_blocks_main_controls_and_backend_calls():
     backend_client = FakeSessionManager()
     app = LofiFocusApp(session_manager=backend_client, config=AppConfig())
