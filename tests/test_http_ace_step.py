@@ -53,6 +53,29 @@ def test_http_adapter_health_reports_success_and_failure():
     assert failure.health() is False
 
 
+def test_http_adapter_client_uses_short_connect_timeout():
+    adapter = AceStepHttpAdapter(base_url="http://ace.test", timeout_seconds=1800.0)
+
+    assert adapter.client.timeout.connect == 10.0
+    assert adapter.client.timeout.read == 1800.0
+    assert adapter.client.timeout.write == 1800.0
+    assert adapter.client.timeout.pool == 1800.0
+
+
+def test_http_adapter_wraps_unreachable_service_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out")
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+
+    with pytest.raises(RuntimeError, match="cannot reach ACE-Step service at http://ace.test"):
+        adapter.generate(make_blueprint(), duration_seconds=1)
+
+
 def test_task_result_parses_double_encoded_audio_result():
     result = TaskResult.from_payload(
         {
@@ -112,7 +135,7 @@ def test_http_adapter_generates_audio_from_remote_task():
         if request.method == "POST" and request.url.path == "/format_input":
             assert request.headers["authorization"] == "Bearer secret"
             assert request.extensions["timeout"] == {
-                "connect": 30.0,
+                "connect": 10.0,
                 "read": 30.0,
                 "write": 30.0,
                 "pool": 30.0,

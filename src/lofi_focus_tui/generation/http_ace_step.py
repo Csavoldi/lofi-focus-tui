@@ -99,6 +99,7 @@ class AceStepHttpAdapter:
         base_url: str = "http://127.0.0.1:8001",
         api_key: str = "",
         timeout_seconds: float = 1800.0,
+        connect_timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 1.0,
         transport: httpx.BaseTransport | None = None,
         client: httpx.Client | None = None,
@@ -108,6 +109,7 @@ class AceStepHttpAdapter:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
+        self.connect_timeout_seconds = connect_timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
         self.clock = clock or time.monotonic
         self.sleep = sleep or time.sleep
@@ -115,8 +117,28 @@ class AceStepHttpAdapter:
         self._close_lock = Lock()
         self._closed = False
         self.client = client if client is not None else httpx.Client(
-            base_url=self.base_url, timeout=timeout_seconds, transport=transport
+            base_url=self.base_url, timeout=self._request_timeout(), transport=transport
         )
+
+    def _request_timeout(self, read_seconds: float | None = None) -> httpx.Timeout:
+        if read_seconds is None:
+            read_seconds = self.timeout_seconds
+        read = min(read_seconds, self.timeout_seconds)
+        return httpx.Timeout(
+            connect=self.connect_timeout_seconds, read=read, write=read, pool=read
+        )
+
+    def _post(self, path: str, json: dict, timeout: httpx.Timeout | None = None) -> httpx.Response:
+        try:
+            return self.client.post(path, json=json, headers=self._headers(), timeout=timeout)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise RuntimeError(f"cannot reach ACE-Step service at {self.base_url}: {exc}") from exc
+
+    def _get(self, path: str, params: dict) -> httpx.Response:
+        try:
+            return self.client.get(path, params=params, headers=self._headers())
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise RuntimeError(f"cannot reach ACE-Step service at {self.base_url}: {exc}") from exc
 
     def close(self) -> None:
         with self._close_lock:
@@ -166,7 +188,7 @@ class AceStepHttpAdapter:
                     ),
                 },
                 headers=self._headers(),
-                timeout=min(30.0, self.timeout_seconds),
+                timeout=self._request_timeout(30.0),
             )
             response.raise_for_status()
             formatted = response.json()
@@ -207,25 +229,17 @@ class AceStepHttpAdapter:
         }
         if seed >= 0:
             payload["seed"] = seed
-        response = self.client.post("/release_task", json=payload, headers=self._headers())
+        response = self._post("/release_task", json=payload)
         response.raise_for_status()
         return TaskSubmission.from_payload(response.json())
 
     def query_result(self, task_id: str) -> TaskResult:
-        response = self.client.post(
-            "/query_result",
-            json={"task_id_list": [task_id]},
-            headers=self._headers(),
-        )
+        response = self._post("/query_result", json={"task_id_list": [task_id]})
         response.raise_for_status()
         return TaskResult.from_payload(response.json())
 
     def download_audio(self, path: str) -> tuple[np.ndarray, int]:
-        response = self.client.get(
-            "/v1/audio",
-            params={"path": path},
-            headers=self._headers(),
-        )
+        response = self._get("/v1/audio", params={"path": path})
         response.raise_for_status()
         return read_wav_bytes(response.content)
 
