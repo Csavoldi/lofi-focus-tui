@@ -64,9 +64,33 @@ def test_blueprint_applies_each_music_preset_recipe():
 
         blueprint = create_blueprint(plan)
 
-        assert blueprint.motif == option.motif
-        assert blueprint.drum_feel == option.drum_feel
-        assert blueprint.bass_behavior == option.bass_behavior
+        assert (blueprint.motif, blueprint.drum_feel, blueprint.bass_behavior) in {
+            (variant.motif, variant.drum_feel, variant.bass_behavior)
+            for variant in option.variants
+        }
+
+
+def test_blueprint_picks_preset_variant_from_session_seed():
+    option = PRESET_OPTIONS["boom_bap"]
+    pool = {
+        (variant.motif, variant.drum_feel, variant.bass_behavior)
+        for variant in option.variants
+    }
+
+    def traits_for(seed):
+        plan = expand_preset(
+            SessionRequest(
+                preset="boom_bap", duration_minutes=30, energy="steady", seed=seed
+            )
+        )
+        blueprint = create_blueprint(plan)
+        return (blueprint.motif, blueprint.drum_feel, blueprint.bass_behavior)
+
+    picked = {traits_for(seed) for seed in range(12)}
+
+    assert picked <= pool
+    assert len(picked) >= 2
+    assert traits_for(5) == traits_for(5)
 
 
 def test_focus_and_preset_recipes_preserve_request_settings_and_vary_expected_traits():
