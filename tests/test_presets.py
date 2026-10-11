@@ -185,3 +185,33 @@ def test_expand_preset_uses_catalog_focus_constraints(focus, option):
     assert plan.focus == focus
     assert plan.preset == "ambient_tape"
     assert plan.focus_constraints == option.focus_constraints
+
+
+@pytest.mark.parametrize(
+    "preset, expected",
+    [(value, option.tempo_range) for value, option in PRESET_OPTIONS.items()],
+)
+def test_expand_preset_uses_music_preset_tempo_range(preset, expected):
+    plan = expand_preset(
+        SessionRequest(preset=preset, duration_minutes=30, energy="steady")
+    )
+
+    assert plan.tempo_range == expected
+
+
+@pytest.mark.parametrize(
+    "preset, expected",
+    [
+        ("classic_lofi", {(70, 80), (70, 90), (80, 90)}),
+        ("lofi_house", {(110, 117), (110, 125), (117, 125)}),
+    ],
+)
+def test_expand_preset_energy_shifts_tempo_within_preset_range(preset, expected):
+    ranges = {
+        expand_preset(
+            SessionRequest(preset=preset, duration_minutes=30, energy=energy)
+        ).tempo_range
+        for energy in EnergyLevel
+    }
+
+    assert ranges == expected

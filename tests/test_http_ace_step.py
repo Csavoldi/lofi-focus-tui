@@ -11,7 +11,7 @@ from lofi_focus_tui.composition import create_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.base import GenerationCancelledError
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter, TaskResult
-from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+from lofi_focus_tui.generation.prompt_engine import MAX_PROMPT_LENGTH, compose_local_prompt
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
@@ -122,7 +122,7 @@ def test_http_adapter_generates_audio_from_remote_task():
                 "lyrics": "[Instrumental]",
                 "temperature": 0.85,
                 "param_obj": (
-                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"minor pentatonic",'
+                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"A minor",'
                     '"language":"unknown","time_signature":"4"}'
                 ),
             }
@@ -143,6 +143,9 @@ def test_http_adapter_generates_audio_from_remote_task():
                 "batch_size",
                 "use_random_seed",
                 "seed",
+                "bpm",
+                "key_scale",
+                "time_signature",
             }
             assert payload["audio_duration"] == 10
             assert payload["inference_steps"] == 12
@@ -150,6 +153,9 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["batch_size"] == 1
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
+            assert payload["bpm"] == blueprint.tempo_bpm
+            assert payload["key_scale"] == "A minor"
+            assert payload["time_signature"] == "4"
             assert payload["prompt"] == "late-night rainy room. formatted rainy room"
             assert payload["lyrics"] == "[Instrumental]"
             assert payload["thinking"] is False
@@ -239,6 +245,9 @@ def test_http_adapter_omits_seed_only_for_random_seed_payload():
         "audio_format",
         "batch_size",
         "use_random_seed",
+        "bpm",
+        "key_scale",
+        "time_signature",
     }
     assert payloads["/release_task"]["use_random_seed"] is True
 
@@ -297,7 +306,7 @@ def _generate_with_format_response(format_response, blueprint=None):
         {"data": {"caption": None}},
         {"data": {"caption": 123}},
         {"data": {"caption": "  "}},
-        {"data": {"caption": "x" * 513}},
+        {"data": {"caption": "x" * (MAX_PROMPT_LENGTH + 1)}},
     ],
     ids=[
         "connection",

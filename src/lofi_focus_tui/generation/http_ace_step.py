@@ -11,7 +11,13 @@ from pydantic import BaseModel
 from lofi_focus_tui.audio.wav import read_wav_bytes
 from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult
-from lofi_focus_tui.generation.prompt_engine import compose_enriched_prompt, compose_local_prompt
+from lofi_focus_tui.generation.prompt_engine import (
+    MAX_PROMPT_LENGTH,
+    compose_enriched_prompt,
+    compose_instrumental_lyrics,
+    compose_local_prompt,
+    key_scale_for_metadata,
+)
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 SUCCEEDED_STATUSES = {"1", "succeeded", "success", "completed", "done"}
@@ -136,9 +142,10 @@ class AceStepHttpAdapter:
         settings = settings or GenerationSettings(seed=blueprint.seed)
         seed = settings.seed if settings.seed >= 0 else blueprint.seed
         local_prompt = compose_local_prompt(blueprint)
-        lyrics = "[Instrumental]" if blueprint.vocal_mode == "instrumental" else ""
+        lyrics = compose_instrumental_lyrics(blueprint)
         prompt = local_prompt
         thinking = blueprint.vocal_mode == "vocals"
+        key_scale = key_scale_for_metadata(blueprint.key_center)
         try:
             response = self.client.post(
                 "/format_input",
@@ -150,7 +157,7 @@ class AceStepHttpAdapter:
                         {
                             "duration": int(duration_seconds),
                             "bpm": int(blueprint.tempo_bpm),
-                            "key": blueprint.key_center,
+                            "key": key_scale,
                             "time_signature": blueprint.meter.split("/", 1)[0],
                             "language": "unknown",
                         },
@@ -170,7 +177,7 @@ class AceStepHttpAdapter:
             if (
                 not isinstance(caption, str)
                 or not (caption := caption.strip())
-                or len(caption) > 512
+                or len(caption) > MAX_PROMPT_LENGTH
             ):
                 raise ValueError("ACE-Step HTTP format response caption is invalid")
             prompt = compose_enriched_prompt(blueprint, caption)
@@ -194,6 +201,9 @@ class AceStepHttpAdapter:
             "audio_format": settings.output_format,
             "batch_size": settings.batch_size,
             "use_random_seed": seed < 0,
+            "bpm": int(blueprint.tempo_bpm),
+            "key_scale": key_scale,
+            "time_signature": blueprint.meter.split("/", 1)[0],
         }
         if seed >= 0:
             payload["seed"] = seed

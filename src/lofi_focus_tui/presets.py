@@ -2,11 +2,21 @@ import hashlib
 from uuid import uuid4
 
 from lofi_focus_tui.domain import EnergyLevel, SessionPhase, SessionPlan, SessionRequest
-from lofi_focus_tui.options import FOCUS_OPTIONS
+from lofi_focus_tui.options import FOCUS_OPTIONS, PRESET_OPTIONS
+
+
+def _tempo_range(base: tuple[int, int], energy: EnergyLevel) -> tuple[int, int]:
+    low, high = base
+    half = (high - low) // 2
+    if energy == EnergyLevel.LOW:
+        return (low, low + half)
+    if energy == EnergyLevel.HIGH:
+        return (low + half, high)
+    return base
 
 
 def expand_preset(request: SessionRequest) -> SessionPlan:
-    tempo_range = (72, 88) if request.energy != EnergyLevel.HIGH else (82, 96)
+    tempo_range = _tempo_range(PRESET_OPTIONS[request.preset].tempo_range, request.energy)
     avoid_traits = [tag.replace("_", " ") for tag in request.avoid_tags]
     legacy_vocal_tags = {"vocals", "no vocals"}
     avoid_traits = [

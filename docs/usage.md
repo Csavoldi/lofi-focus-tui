@@ -76,14 +76,22 @@ classic_lofi: dusty keys, swung drums, round bass
 neo_soul: warm chords, pocketed rhythm, mellow bass
 ambient_tape: sparse pulse, wide pads, tape haze
 jazz_vinyl: brushed drums, jazz harmony, vinyl texture
+lofi_house: washed chord stabs, four-on-the-floor, tape hiss
+synthwave: analog arps, gated drums, neon nostalgia
+city_pop: funky bass, bright keys, 80s sheen
+boom_bap: gritty breaks, sampled chops, vinyl grit
+peaceful_piano: felt piano, dreamy pads, near-weightless
 ```
+
+Each preset carries its own tempo range; energy picks the soft, natural, or livelier
+end of it (for example lofi_house sits at 110-125 BPM while neo_soul sits at 65-85).
 
 ### Energy
 
 ```text
-low: soft movement and a restrained pulse
-steady: balanced movement for ordinary focus work
-high: more rhythmic momentum while remaining non-distracting
+low: slow and spacious, resting at the soft end of the preset's tempo range
+steady: the preset's natural tempo, balanced for ordinary focus work
+high: livelier end of the preset's tempo range, still non-distracting
 ```
 
 ### Style
@@ -91,8 +99,10 @@ high: more rhythmic momentum while remaining non-distracting
 ```text
 lofi, neo_soul: warm, dusty, chord-forward texture
 ambient, tape: spacious, hazy, slowly moving texture
-rainy, mellow: soft atmosphere and subdued detail
+rainy, mellow: rainy-day atmosphere, soft and subdued
 jazz, vinyl: brushed, tactile, lightly swinging texture
+vinyl, dust: crackly, gritty beattape texture
+neon, retro: bright 80s sheen, nostalgic glow
 ```
 
 The status panel shows backend state, device, playback mode, volume, playback position and duration,

@@ -128,9 +128,9 @@ def test_chunk_blueprints_preserve_identity_with_chunk_context():
     assert first.key_center == base.key_center
     assert first.motif == base.motif
     assert first.boundary_constraints == base.boundary_constraints
-    assert first.texture_layers != second.texture_layers
-    assert "chunk 1 of 3" in " ".join(first.texture_layers)
-    assert "chunk 2 of 3" in " ".join(second.texture_layers)
+    assert first.section == "warmup"
+    assert second.section == "steady_work"
+    assert first.texture_layers == second.texture_layers == base.texture_layers
 
 
 def test_chunk_blueprint_reuses_supplied_base_blueprint(monkeypatch):

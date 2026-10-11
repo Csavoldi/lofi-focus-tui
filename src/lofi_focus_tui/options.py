@@ -24,6 +24,11 @@ class MusicPresetValue(StrEnum):
     NEO_SOUL = "neo_soul"
     AMBIENT_TAPE = "ambient_tape"
     JAZZ_VINYL = "jazz_vinyl"
+    LOFI_HOUSE = "lofi_house"
+    SYNTHWAVE = "synthwave"
+    CITY_POP = "city_pop"
+    BOOM_BAP = "boom_bap"
+    PEACEFUL_PIANO = "peaceful_piano"
 
 
 class StyleValue(StrEnum):
@@ -31,6 +36,8 @@ class StyleValue(StrEnum):
     AMBIENT_TAPE = "ambient, tape"
     RAINY_MELLOW = "rainy, mellow"
     JAZZ_VINYL = "jazz, vinyl"
+    VINYL_DUST = "vinyl, dust"
+    NEON_RETRO = "neon, retro"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +55,7 @@ class PresetOption:
     motif: str
     drum_feel: str
     bass_behavior: str
+    tempo_range: tuple[int, int]
 
 
 OptionValue = TypeVar("OptionValue")
@@ -81,7 +89,7 @@ FOCUS_OPTIONS = {
     FocusValue.WIND_DOWN: FocusOption(
         FocusValue.WIND_DOWN,
         "soft, slow decompression",
-        ["low density", "soft transitions", "no abrupt changes"],
+        ["low density", "minimal percussion", "soft transitions", "no abrupt changes"],
         ["settle", "unwind", "cooldown"],
     ),
 }
@@ -93,6 +101,7 @@ PRESET_OPTIONS = {
         "dusty electric-piano figure",
         "soft swung lofi backbeat",
         "round sustained bass",
+        (70, 90),
     ),
     MusicPresetValue.NEO_SOUL: PresetOption(
         MusicPresetValue.NEO_SOUL,
@@ -100,6 +109,7 @@ PRESET_OPTIONS = {
         "warm Rhodes-style chord figure",
         "pocketed neo-soul groove",
         "mellow melodic bass",
+        (65, 85),
     ),
     MusicPresetValue.AMBIENT_TAPE: PresetOption(
         MusicPresetValue.AMBIENT_TAPE,
@@ -107,6 +117,7 @@ PRESET_OPTIONS = {
         "sparse washed pad motif",
         "minimal soft pulse",
         "long sustained low movement",
+        (60, 80),
     ),
     MusicPresetValue.JAZZ_VINYL: PresetOption(
         MusicPresetValue.JAZZ_VINYL,
@@ -114,21 +125,62 @@ PRESET_OPTIONS = {
         "jazzy electric-piano motif",
         "brushed light swing",
         "warm upright-style movement",
+        (65, 85),
+    ),
+    MusicPresetValue.LOFI_HOUSE: PresetOption(
+        MusicPresetValue.LOFI_HOUSE,
+        "washed chord stabs, four-on-the-floor, tape hiss",
+        "washed chord-stab loop",
+        "soft four-on-the-floor house kick",
+        "deep rolling bassline",
+        (110, 125),
+    ),
+    MusicPresetValue.SYNTHWAVE: PresetOption(
+        MusicPresetValue.SYNTHWAVE,
+        "analog arps, gated drums, neon nostalgia",
+        "analog synth arpeggio",
+        "gated 80s drum machine",
+        "pulsing synth bass",
+        (80, 110),
+    ),
+    MusicPresetValue.CITY_POP: PresetOption(
+        MusicPresetValue.CITY_POP,
+        "funky bass, bright keys, 80s sheen",
+        "bright electric-piano lick",
+        "light funk groove",
+        "bouncy fingered bassline",
+        (100, 115),
+    ),
+    MusicPresetValue.BOOM_BAP: PresetOption(
+        MusicPresetValue.BOOM_BAP,
+        "gritty breaks, sampled chops, vinyl grit",
+        "sampled melodic chop",
+        "dusty boom-bap break with a fat snare",
+        "subby round bass",
+        (75, 95),
+    ),
+    MusicPresetValue.PEACEFUL_PIANO: PresetOption(
+        MusicPresetValue.PEACEFUL_PIANO,
+        "felt piano, dreamy pads, near-weightless",
+        "soft felt-piano figure",
+        "sparse gentle pulse",
+        "sparse low piano notes",
+        (60, 75),
     ),
 }
 
 ENERGY_OPTIONS = {
     EnergyLevel.LOW: DescribedOption(
         EnergyLevel.LOW,
-        "soft movement and a restrained pulse",
+        "slow and spacious, resting at the soft end of the preset's tempo range",
     ),
     EnergyLevel.STEADY: DescribedOption(
         EnergyLevel.STEADY,
-        "balanced movement for ordinary focus work",
+        "the preset's natural tempo, balanced for ordinary focus work",
     ),
     EnergyLevel.HIGH: DescribedOption(
         EnergyLevel.HIGH,
-        "more rhythmic momentum while remaining non-distracting",
+        "livelier end of the preset's tempo range, still non-distracting",
     ),
 }
 
@@ -143,11 +195,19 @@ STYLE_OPTIONS = {
     ),
     StyleValue.RAINY_MELLOW: DescribedOption(
         StyleValue.RAINY_MELLOW,
-        "soft atmosphere and subdued detail",
+        "rainy-day atmosphere, soft and subdued",
     ),
     StyleValue.JAZZ_VINYL: DescribedOption(
         StyleValue.JAZZ_VINYL,
         "brushed, tactile, lightly swinging texture",
+    ),
+    StyleValue.VINYL_DUST: DescribedOption(
+        StyleValue.VINYL_DUST,
+        "crackly, gritty beattape texture",
+    ),
+    StyleValue.NEON_RETRO: DescribedOption(
+        StyleValue.NEON_RETRO,
+        "bright 80s sheen, nostalgic glow",
     ),
 }
 

@@ -15,8 +15,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on Python 3.10
 class GenerationConfig(BaseModel):
     backend: Literal["mock", "ace-step", "ace-step-http", "runpod"] = "ace-step-http"
     output_format: Literal["wav"] = "wav"
-    inference_steps: int = Field(default=27, ge=1, le=100)
-    guidance_scale: float = Field(default=15.0, ge=0.0, le=30.0)
+    # ACE-Step 1.5 turbo defaults; see GenerationSettings for base/sft guidance.
+    inference_steps: int = Field(default=8, ge=1, le=100)
+    guidance_scale: float = Field(default=7.0, ge=0.0, le=30.0)
     batch_size: int = Field(default=1, ge=1, le=8)
     chunk_seconds: int = Field(default=600, ge=10, le=600)
     checkpoint_path: str = ""

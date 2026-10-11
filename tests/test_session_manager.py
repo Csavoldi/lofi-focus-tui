@@ -557,8 +557,8 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert final_status.chunk_count == 5
     assert final_status.chunk_index == 5
     assert [duration for _blueprint, duration, _settings in model.calls] == [60, 60, 60, 60, 60]
-    assert "chunk 1 of 5" in " ".join(model.calls[0][0].texture_layers)
-    assert "chunk 5 of 5" in " ".join(model.calls[-1][0].texture_layers)
+    assert model.calls[0][0].section == "warmup"
+    assert model.calls[-1][0].section == "cooldown"
     assert playback.loaded.duration_seconds == 296.0
     assert playback.loaded.audio.shape == (2960,)
 

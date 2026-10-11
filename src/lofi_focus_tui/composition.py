@@ -44,14 +44,9 @@ def create_chunk_blueprint(
     section = blueprint.arrangement_sections[
         min(chunk_index, len(blueprint.arrangement_sections) - 1)
     ]
-    chunk_label = f"chunk {chunk_index + 1} of {chunk_count}"
     return blueprint.model_copy(
         update={
-            "texture_layers": [
-                *blueprint.texture_layers,
-                f"{chunk_label} {section} texture",
-            ],
-            "arrangement_sections": [section, chunk_label],
+            "section": section,
             "continuation_constraints": continuation_constraints or [],
         }
     )

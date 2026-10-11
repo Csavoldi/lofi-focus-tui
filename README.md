@@ -45,8 +45,8 @@ Make sure `config.toml` contains the following settings:
 ```toml
 [generation]
 backend = "ace-step-http"
-inference_steps = 27
-guidance_scale = 15.0
+inference_steps = 8
+guidance_scale = 7.0
 batch_size = 1
 chunk_seconds = 600
 

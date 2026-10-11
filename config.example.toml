@@ -17,8 +17,10 @@ theme = "city_pop"
 # ace-step-http is the normal default; mock is an explicit development fallback.
 backend = "ace-step-http"
 output_format = "wav"
-inference_steps = 27
-guidance_scale = 15.0
+# ACE-Step-1.5 turbo defaults: 8 steps, no CFG. Base/sft models want 32-50
+# steps with guidance_scale near 7.0.
+inference_steps = 8
+guidance_scale = 7.0
 batch_size = 1
 # Maximum chunk size in seconds (10-600). Longer sessions are split into chunks.
 chunk_seconds = 600
