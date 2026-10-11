@@ -7,6 +7,7 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
     tempo = low + (plan.seed % max(1, high - low + 1))
     focus = FOCUS_OPTIONS[plan.focus]
     preset = PRESET_OPTIONS[plan.preset]
+    variant = preset.variants[plan.seed % len(preset.variants)]
 
     return CompositionBlueprint(
         session_id=plan.session_id,
@@ -16,9 +17,9 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
         tempo_bpm=tempo,
         key_center=plan.key_center,
         harmonic_palette=["i", "VI", "III", "VII"],
-        motif=preset.motif,
-        drum_feel=preset.drum_feel,
-        bass_behavior=preset.bass_behavior,
+        motif=variant.motif,
+        drum_feel=variant.drum_feel,
+        bass_behavior=variant.bass_behavior,
         texture_layers=plan.style_traits,
         arrangement_sections=list(focus.arrangement_sections),
         boundary_constraints=[

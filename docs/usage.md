@@ -85,6 +85,9 @@ peaceful_piano: felt piano, dreamy pads, near-weightless
 
 Each preset carries its own tempo range; energy picks the soft, natural, or livelier
 end of it (for example lofi_house sits at 110-125 BPM while neo_soul sits at 65-85).
+Each preset also holds ten prompt variations (different lead sounds, drum feels, and
+basslines); the session seed picks one, so the same seed reproduces the same variation
+and every chunk of a session shares it.
 
 ### Energy
 
