@@ -6,7 +6,7 @@ import pytest
 from textual.widgets import Input
 
 from lofi_focus_tui.config import AppConfig
-from lofi_focus_tui.domain import BackendStatus, ExportResponse
+from lofi_focus_tui.domain import BackendState, BackendStatus, ExportResponse
 from lofi_focus_tui.options import (
     ENERGY_OPTIONS,
     FOCUS_OPTIONS,
@@ -17,7 +17,12 @@ from lofi_focus_tui.tui import app as app_module
 from lofi_focus_tui.tui import widgets as widgets_module
 from lofi_focus_tui.tui.app import LofiFocusApp
 from lofi_focus_tui.tui.themes import THEMES
-from lofi_focus_tui.tui.widgets import DURATIONS, prompt_summary, render_session
+from lofi_focus_tui.tui.widgets import (
+    DURATIONS,
+    prompt_summary,
+    render_session,
+    render_status,
+)
 
 
 def status_text(app: LofiFocusApp) -> str:
@@ -54,6 +59,18 @@ def test_render_session_includes_prompt_summary_and_vocal_mode():
 
     assert "prompt: warm piano" in rendered
     assert "mode: instrumental" in rendered
+
+
+def test_render_status_shows_error_reason_only_in_error_state():
+    failing = BackendStatus(
+        state=BackendState.ERROR, message="generation failed", error="connection refused"
+    )
+    idle = BackendStatus(state=BackendState.IDLE, message="ready", error="stale")
+
+    rendered = str(render_status(failing))
+
+    assert "error: connection refused" in rendered
+    assert "stale" not in str(render_status(idle))
 
 
 @pytest.mark.asyncio
