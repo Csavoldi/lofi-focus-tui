@@ -90,6 +90,12 @@ class LofiFocusApp(App[None]):
         height: auto;
         margin: 1 0;
     }
+    #option-guide, #export-prompt, #export-directory, #export-error {
+        width: 64;
+    }
+    #prompt {
+        border: round #666666;
+    }
     """
 
     def __init__(

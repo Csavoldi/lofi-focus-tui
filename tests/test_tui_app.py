@@ -6,7 +6,7 @@ import pytest
 from textual.widgets import Input
 
 from lofi_focus_tui.config import AppConfig
-from lofi_focus_tui.domain import BackendStatus, ExportResponse
+from lofi_focus_tui.domain import BackendState, BackendStatus, ExportResponse
 from lofi_focus_tui.options import (
     ENERGY_OPTIONS,
     FOCUS_OPTIONS,
@@ -17,7 +17,12 @@ from lofi_focus_tui.tui import app as app_module
 from lofi_focus_tui.tui import widgets as widgets_module
 from lofi_focus_tui.tui.app import LofiFocusApp
 from lofi_focus_tui.tui.themes import THEMES
-from lofi_focus_tui.tui.widgets import DURATIONS, prompt_summary, render_session
+from lofi_focus_tui.tui.widgets import (
+    DURATIONS,
+    prompt_summary,
+    render_session,
+    render_status,
+)
 
 
 def status_text(app: LofiFocusApp) -> str:
@@ -56,6 +61,18 @@ def test_render_session_includes_prompt_summary_and_vocal_mode():
     assert "mode: instrumental" in rendered
 
 
+def test_render_status_shows_error_reason_only_in_error_state():
+    failing = BackendStatus(
+        state=BackendState.ERROR, message="generation failed", error="connection refused"
+    )
+    idle = BackendStatus(state=BackendState.IDLE, message="ready", error="stale")
+
+    rendered = str(render_status(failing))
+
+    assert "error: connection refused" in rendered
+    assert "stale" not in str(render_status(idle))
+
+
 @pytest.mark.asyncio
 async def test_tui_composes_blurred_prompt_editor_with_max_length():
     app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
@@ -66,6 +83,17 @@ async def test_tui_composes_blurred_prompt_editor_with_max_length():
         assert prompt.max_length == 512
         assert prompt.value == ""
         assert pilot.app.focused is None
+
+
+@pytest.mark.asyncio
+async def test_prompt_input_border_is_styled_and_visible():
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
+
+    async with app.run_test() as pilot:
+        border = pilot.app.query_one("#prompt", Input).styles.border_top
+
+    assert border[0] == "round"
+    assert border[1].hex == "#666666"
 
 
 @pytest.mark.asyncio
@@ -622,6 +650,23 @@ async def test_tui_option_guide_renders_every_shared_catalog_description():
     for catalog in (FOCUS_OPTIONS, PRESET_OPTIONS, ENERGY_OPTIONS, STYLE_OPTIONS, THEMES):
         for option in catalog.values():
             assert option.description in text
+
+
+@pytest.mark.asyncio
+async def test_tui_modal_screens_center_their_content_at_110_columns():
+    app = LofiFocusApp(session_manager=FakeSessionManager(), config=AppConfig())
+
+    async with app.run_test(size=(110, 50)) as pilot:
+        await pilot.press("h")
+        guide = pilot.app.screen.query_one("#option-guide")
+        assert guide.region.width == 64
+        assert guide.region.x == (110 - 64) // 2
+
+        await pilot.press("escape")
+        await pilot.press("e")
+        export_input = pilot.app.screen.query_one("#export-directory", Input)
+        assert export_input.region.width == 64
+        assert export_input.region.x == (110 - 64) // 2
 
 
 @pytest.mark.asyncio

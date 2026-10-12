@@ -544,11 +544,11 @@ class SessionManager:
         metadata.update(
             {
                 "session_id": session_id,
-                "chunk_count": str(len(chunk_results)),
-                "requested_duration_seconds": str(
-                    sum(result.duration_seconds for result in chunk_results)
+                "chunk_count": len(chunk_results),
+                "requested_duration_seconds": sum(
+                    result.duration_seconds for result in chunk_results
                 ),
-                "actual_duration_seconds": f"{len(audio) / sample_rate:.6f}",
+                "actual_duration_seconds": len(audio) / sample_rate,
                 "chunks": chunk_metadata,
             }
         )

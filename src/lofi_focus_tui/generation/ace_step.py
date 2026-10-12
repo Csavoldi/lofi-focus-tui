@@ -5,7 +5,10 @@ from pathlib import Path
 from lofi_focus_tui.audio.wav import read_wav_file
 from lofi_focus_tui.domain import CompositionBlueprint
 from lofi_focus_tui.generation.base import GenerationResult
-from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+from lofi_focus_tui.generation.prompt_engine import (
+    compose_instrumental_lyrics,
+    compose_local_prompt,
+)
 from lofi_focus_tui.generation.settings import GenerationSettings
 
 
@@ -68,7 +71,7 @@ class AceStepAdapter:
         seed = settings.seed if settings.seed >= 0 else blueprint.seed
         save_path = self.output_dir / f"{blueprint.session_id}.{settings.output_format}"
         prompt = compose_local_prompt(blueprint)
-        lyrics = "[Instrumental]" if blueprint.vocal_mode == "instrumental" else ""
+        lyrics = compose_instrumental_lyrics(blueprint)
 
         pipeline(
             audio_duration=duration_seconds,

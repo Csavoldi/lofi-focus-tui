@@ -86,6 +86,8 @@ def render_status(status: BackendStatus, theme: Theme | None = None) -> Text:
         _bar_line("progress", f"{progress}%", status.progress, theme),
         _field_line("message", status.message, message_style),
     ]
+    if state == "error" and status.error:
+        lines.append(_field_line("error", status.error, theme.desc))
     if status.chunk_count > 1:
         lines.append(
             _field_line("chunks", f"{status.chunk_index}/{status.chunk_count}", theme.value)

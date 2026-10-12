@@ -28,8 +28,10 @@ HTTP port.
 [generation]
 backend = "ace-step-http"
 output_format = "wav"
-inference_steps = 27
-guidance_scale = 15.0
+# ACE-Step-1.5 turbo defaults: 8 steps, no CFG. Base/sft models want 32-50
+# steps with guidance_scale near 7.0.
+inference_steps = 8
+guidance_scale = 7.0
 batch_size = 1
 chunk_seconds = 600
 checkpoint_path = ""

@@ -11,7 +11,7 @@ from lofi_focus_tui.composition import create_blueprint
 from lofi_focus_tui.domain import EnergyLevel, SessionRequest
 from lofi_focus_tui.generation.base import GenerationCancelledError
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter, TaskResult
-from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+from lofi_focus_tui.generation.prompt_engine import MAX_PROMPT_LENGTH, compose_local_prompt
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
@@ -51,6 +51,29 @@ def test_http_adapter_health_reports_success_and_failure():
 
     assert success.health() is True
     assert failure.health() is False
+
+
+def test_http_adapter_client_uses_short_connect_timeout():
+    adapter = AceStepHttpAdapter(base_url="http://ace.test", timeout_seconds=1800.0)
+
+    assert adapter.client.timeout.connect == 10.0
+    assert adapter.client.timeout.read == 1800.0
+    assert adapter.client.timeout.write == 1800.0
+    assert adapter.client.timeout.pool == 1800.0
+
+
+def test_http_adapter_wraps_unreachable_service_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out")
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+
+    with pytest.raises(RuntimeError, match="cannot reach ACE-Step service at http://ace.test"):
+        adapter.generate(make_blueprint(), duration_seconds=1)
 
 
 def test_task_result_parses_double_encoded_audio_result():
@@ -112,7 +135,7 @@ def test_http_adapter_generates_audio_from_remote_task():
         if request.method == "POST" and request.url.path == "/format_input":
             assert request.headers["authorization"] == "Bearer secret"
             assert request.extensions["timeout"] == {
-                "connect": 30.0,
+                "connect": 10.0,
                 "read": 30.0,
                 "write": 30.0,
                 "pool": 30.0,
@@ -122,7 +145,7 @@ def test_http_adapter_generates_audio_from_remote_task():
                 "lyrics": "[Instrumental]",
                 "temperature": 0.85,
                 "param_obj": (
-                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"minor pentatonic",'
+                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"A minor",'
                     '"language":"unknown","time_signature":"4"}'
                 ),
             }
@@ -143,6 +166,9 @@ def test_http_adapter_generates_audio_from_remote_task():
                 "batch_size",
                 "use_random_seed",
                 "seed",
+                "bpm",
+                "key_scale",
+                "time_signature",
             }
             assert payload["audio_duration"] == 10
             assert payload["inference_steps"] == 12
@@ -150,6 +176,9 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["batch_size"] == 1
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
+            assert payload["bpm"] == blueprint.tempo_bpm
+            assert payload["key_scale"] == "A minor"
+            assert payload["time_signature"] == "4"
             assert payload["prompt"] == "late-night rainy room. formatted rainy room"
             assert payload["lyrics"] == "[Instrumental]"
             assert payload["thinking"] is False
@@ -239,6 +268,9 @@ def test_http_adapter_omits_seed_only_for_random_seed_payload():
         "audio_format",
         "batch_size",
         "use_random_seed",
+        "bpm",
+        "key_scale",
+        "time_signature",
     }
     assert payloads["/release_task"]["use_random_seed"] is True
 
@@ -297,7 +329,7 @@ def _generate_with_format_response(format_response, blueprint=None):
         {"data": {"caption": None}},
         {"data": {"caption": 123}},
         {"data": {"caption": "  "}},
-        {"data": {"caption": "x" * 513}},
+        {"data": {"caption": "x" * (MAX_PROMPT_LENGTH + 1)}},
     ],
     ids=[
         "connection",

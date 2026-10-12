@@ -7,7 +7,9 @@ from lofi_focus_tui.generation.prompt_engine import (
     MAX_PROMPT_LENGTH,
     append_prompt_parts,
     compose_enriched_prompt,
+    compose_instrumental_lyrics,
     compose_local_prompt,
+    key_scale_for_metadata,
 )
 from lofi_focus_tui.presets import expand_preset
 
@@ -47,17 +49,18 @@ def golden_blueprint():
 
 def test_compose_local_prompt_has_canonical_golden_output(golden_blueprint):
     assert compose_local_prompt(golden_blueprint) == (
-        "rainy room. Optional musical context: dusty tape, soft piano, motif, drums, "
-        "bass, steady energy: balanced movement for ordinary focus work, deep_work focus: "
-        "minimal variation, stable tempo, no abrupt changes. Technical direction: 80 BPM, "
-        "D minor, meter 4/4, arrangement: warmup, steady_work, stable tempo, carry motif. "
-        "Vocal direction: instrumental, no vocals"
+        "rainy room. relaxed instrumental lo-fi: motif, drums, bass, dusty tape, soft piano. "
+        "unobtrusive and hypnotic for deep focus. minimal variation, stable tempo, "
+        "smooth transitions, recurring motif"
     )
 
 
-def test_compose_local_prompt_has_vocal_suffix(golden_blueprint):
+def test_compose_local_prompt_marks_vocal_mode_in_genre(golden_blueprint):
     golden_blueprint.vocal_mode = "vocals"
-    assert compose_local_prompt(golden_blueprint).endswith("Vocal direction: vocals allowed")
+
+    assert compose_local_prompt(golden_blueprint).startswith(
+        "rainy room. relaxed lo-fi with vocals:"
+    )
 
 
 def test_compose_local_prompt_handles_category_only_and_empty_items(golden_blueprint):
@@ -70,9 +73,10 @@ def test_compose_local_prompt_handles_category_only_and_empty_items(golden_bluep
 
     result = compose_local_prompt(golden_blueprint)
 
-    assert result.startswith("Optional musical context: rain, motif, drums, bass")
-    assert "focus:" not in result
-    assert "arrangement:" not in result
+    assert result == (
+        "relaxed instrumental lo-fi: motif, drums, bass, rain. "
+        "unobtrusive and hypnotic for deep focus"
+    )
     assert "  " not in result
 
 
@@ -85,12 +89,96 @@ def test_compose_local_prompt_is_deterministic_and_preserves_user_wording(golden
     assert ". " in first
 
 
+def test_compose_local_prompt_keeps_technical_values_out_of_the_caption(golden_blueprint):
+    result = compose_local_prompt(golden_blueprint)
+
+    assert str(golden_blueprint.tempo_bpm) not in result
+    assert "bpm" not in result.lower()
+    assert "meter" not in result.lower()
+    assert "key center: d minor" not in result.lower()
+
+
+def test_compose_local_prompt_rewrites_constraints_positively(golden_blueprint):
+    golden_blueprint.boundary_constraints = [
+        "preserve stable tempo",
+        "preserve key center",
+        "preserve shared motif",
+        "avoid abrupt section jumps",
+    ]
+    golden_blueprint.continuation_constraints = [
+        "match the previous chunk's loudness at the transition",
+        "avoid a sharp transient at the transition",
+    ]
+
+    result = compose_local_prompt(golden_blueprint)
+
+    assert "steady consistent tempo" in result
+    assert "consistent key center" in result
+    assert "recurring signature motif" in result
+    assert "smooth section transitions" in result
+    assert "smooth transition from the previous section" in result
+    assert "loudness" not in result
+    lowered = result.lower()
+    for marker in ("no ", "not ", "avoid ", "preserve "):
+        assert marker not in lowered
+
+
+def test_compose_local_prompt_drops_unknown_negatives_and_keeps_unknown_positives(
+    golden_blueprint,
+):
+    golden_blueprint.continuation_constraints = [
+        "whispered saxophone accents",
+        "no loud hits",
+    ]
+
+    result = compose_local_prompt(golden_blueprint)
+
+    assert "whispered saxophone accents" in result
+    assert "loud hits" not in result
+
+
+def test_compose_local_prompt_describes_chunk_section():
+    plan = expand_preset(make_request(prompt="late-night rainy room", seed=5))
+    chunk = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+
+    result = compose_local_prompt(chunk)
+
+    assert chunk.section == "steady_work"
+    assert "steady main section" in result
+
+
+def test_compose_instrumental_lyrics_defaults_to_instrumental_tag(golden_blueprint):
+    assert compose_instrumental_lyrics(golden_blueprint) == "[Instrumental]"
+
+
+def test_compose_instrumental_lyrics_uses_section_structure_tags():
+    plan = expand_preset(make_request(seed=3))
+    warmup = create_chunk_blueprint(plan, chunk_index=0, chunk_count=3)
+    steady = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+    cooldown = create_chunk_blueprint(plan, chunk_index=2, chunk_count=3)
+
+    assert compose_instrumental_lyrics(warmup) == "[Intro - steady]"
+    assert compose_instrumental_lyrics(steady) == "[Main Theme - steady]"
+    assert compose_instrumental_lyrics(cooldown) == "[Outro - steady]"
+
+
+def test_compose_instrumental_lyrics_is_empty_for_vocal_mode(golden_blueprint):
+    golden_blueprint.vocal_mode = "vocals"
+
+    assert compose_instrumental_lyrics(golden_blueprint) == ""
+
+
+def test_key_scale_for_metadata_maps_app_keys_to_model_anchor_keys():
+    assert key_scale_for_metadata("minor pentatonic") == "A minor"
+    assert key_scale_for_metadata(" D minor ") == "D minor"
+
+
 @pytest.mark.parametrize(
     ("parts", "expected"),
     [
-        (["x" * 512, "tail"], "x" * 512),
-        (["x" * 509, "tail"], "x" * 509 + ". t"),
-        (["x" * 510, "tail"], "x" * 510),
+        (["x" * MAX_PROMPT_LENGTH, "tail"], "x" * MAX_PROMPT_LENGTH),
+        (["x" * (MAX_PROMPT_LENGTH - 3), "tail"], "x" * (MAX_PROMPT_LENGTH - 3) + ". t"),
+        (["x" * (MAX_PROMPT_LENGTH - 2), "tail"], "x" * (MAX_PROMPT_LENGTH - 2)),
     ],
 )
 def test_append_prompt_parts_obeys_512_character_boundary(parts, expected):
@@ -121,7 +209,7 @@ def test_compose_enriched_prompt_appends_caption_to_user_prompt(golden_blueprint
 def test_compose_enriched_prompt_trims_whitespace_and_respects_caption_boundary(golden_blueprint):
     golden_blueprint.prompt = "  user wording  "
 
-    result = compose_enriched_prompt(golden_blueprint, f"  {'caption' * 100}  ")
+    result = compose_enriched_prompt(golden_blueprint, f"  {'caption' * 200}  ")
 
     assert result.startswith("user wording. caption")
     assert len(result) == MAX_PROMPT_LENGTH

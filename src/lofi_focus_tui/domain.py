@@ -161,6 +161,7 @@ class CompositionBlueprint(BaseModel):
     arrangement_sections: list[str]
     boundary_constraints: list[str]
     continuation_constraints: list[str] = Field(default_factory=list)
+    section: str = ""
     prompt: str = ""
     vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
     energy: EnergyLevel = EnergyLevel.STEADY
