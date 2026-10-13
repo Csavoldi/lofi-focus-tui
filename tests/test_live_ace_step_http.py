@@ -13,8 +13,9 @@ from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.presets import expand_preset
 
 
-def test_live_ace_step_15_http_generates_valid_focus_audio():
-    base_url = os.environ.get("LOFI_UAT_ACE_STEP_BASE_URL")
+@pytest.mark.live
+def test_live_ace_step_15_http_generates_valid_focus_audio(request):
+    base_url = request.getfixturevalue("live_ace_step_base_url")
     if not base_url:
         pytest.skip("set LOFI_UAT_ACE_STEP_BASE_URL to run the live ACE-Step-1.5 HTTP gate")
 
@@ -33,7 +34,7 @@ def test_live_ace_step_15_http_generates_valid_focus_audio():
     )
     assert adapter.health(), f"ACE-Step-1.5 HTTP service is not healthy at {base_url}"
 
-    request = SessionRequest(
+    session_request = SessionRequest(
         preset="deep_work",
         duration_minutes=5,
         energy=EnergyLevel.STEADY,
@@ -41,7 +42,7 @@ def test_live_ace_step_15_http_generates_valid_focus_audio():
         avoid_tags=["vocals", "speech", "harsh clipping"],
         seed=seed,
     )
-    blueprint = create_blueprint(expand_preset(request))
+    blueprint = create_blueprint(expand_preset(session_request))
     settings = GenerationSettings(
         output_format="wav",
         inference_steps=inference_steps,
