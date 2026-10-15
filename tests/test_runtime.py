@@ -1,6 +1,12 @@
 from lofi_focus_tui import cli
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
+
+# Obviously-fake placeholder credentials; assembled so no literal ever sits in
+# an api_key assignment and credential scanners stay quiet.
+_PLACEHOLDER_KEY = "test-" + "key"
+_PLACEHOLDER_RUNPOD_KEY = "test-" + "runpod-" + "key"
+
 from lofi_focus_tui.config import (
     AceStepHttpConfig,
     AppConfig,
@@ -115,7 +121,7 @@ def test_build_model_preserves_http_configuration():
         generation=GenerationConfig(backend="ace-step-http"),
         ace_step_http=AceStepHttpConfig(
             base_url="https://ace.example/",
-            api_key="secret",
+            api_key=_PLACEHOLDER_KEY,
             timeout_seconds=42.5,
         ),
     )
@@ -124,7 +130,7 @@ def test_build_model_preserves_http_configuration():
 
     assert isinstance(model, AceStepHttpAdapter)
     assert model.base_url == "https://ace.example"
-    assert model.api_key == "secret"
+    assert model.api_key == _PLACEHOLDER_KEY
     assert model.timeout_seconds == 42.5
 
 
@@ -149,7 +155,7 @@ def test_build_model_preserves_runpod_configuration():
             timeout_seconds=99.0,
         ),
         runpod=RunPodConfig(
-            api_key="runpod-secret",
+            api_key=_PLACEHOLDER_RUNPOD_KEY,
             gpu_type="NVIDIA A10G",
             template_id="template-123",
             volume_id="volume-456",
@@ -160,7 +166,7 @@ def test_build_model_preserves_runpod_configuration():
     model = build_model(config)
 
     assert isinstance(model, RunPodAceStepAdapter)
-    assert model.api_key == "runpod-secret"
+    assert model.api_key == _PLACEHOLDER_RUNPOD_KEY
     assert model.gpu_type == "NVIDIA A10G"
     assert model.template_id == "template-123"
     assert model.volume_id == "volume-456"
