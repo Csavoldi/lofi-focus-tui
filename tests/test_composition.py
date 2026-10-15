@@ -29,6 +29,7 @@ def test_blueprint_carries_continuity_identity():
     assert blueprint.seed == plan.seed
     assert blueprint.tempo_bpm >= plan.tempo_range[0]
     assert blueprint.boundary_constraints == BOUNDARY_CONSTRAINTS
+    assert blueprint.genre_tags == PRESET_OPTIONS["classic_lofi"].genre_tags
 
 
 def test_blueprint_applies_each_focus_recipe():

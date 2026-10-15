@@ -69,11 +69,28 @@ _CONSTRAINT_REWRITES = {
 
 _NEGATIVE_PREFIXES = ("no ", "not ", "never ", "avoid ", "without ", "don't ")
 
-# ACE-Step metadata expects a key like "A minor"; "minor pentatonic" is the
-# app's tonal flavor, not a key name the model anchors on.
+# ACE-Step metadata expects a full key name like "A Minor"; "minor pentatonic"
+# is the app's tonal flavor, not a key name the model anchors on.
 _KEY_SCALE_ALIASES = {
-    "minor pentatonic": "A minor",
+    "minor pentatonic": "A Minor",
 }
+
+# Community guidance for ACE-Step 1.5 captions keeps tempo qualitative in the
+# caption (the numeric bpm rides in metadata): short phrases beat prose, and
+# the tempo slot sits between the instrument list and the vibe description.
+_TEMPO_PHRASES = (
+    (80, "slow, unhurried tempo"),
+    (100, "easy mid-tempo pulse"),
+    (120, "steady up-tempo pulse"),
+)
+_TEMPO_PHRASE_MAX = "driving up-tempo momentum"
+
+
+def _qualitative_tempo(bpm: int) -> str:
+    for threshold, phrase in _TEMPO_PHRASES:
+        if bpm < threshold:
+            return phrase
+    return _TEMPO_PHRASE_MAX
 
 
 def _clean_items(items):
@@ -114,16 +131,18 @@ def compose_local_prompt(blueprint: CompositionBlueprint) -> str:
             *blueprint.texture_layers,
         ]
     )
-    style = f"{mood} {genre}"
-    parts = [blueprint.prompt.strip()]
-    parts.append(f"{style}: {', '.join(instruments)}" if instruments else style)
-
-    if focus_phrase := _FOCUS_CAPTION_PHRASES.get(blueprint.focus):
-        parts.append(focus_phrase)
-    if section_phrase := _SECTION_CAPTION_PHRASES.get(blueprint.section.strip()):
-        parts.append(section_phrase)
-    if continuity := _continuity_phrase(blueprint):
-        parts.append(continuity)
+    # Caption slots follow the community-validated order for ACE-Step:
+    # genre/style tags, lead instruments, qualitative tempo, vibe, then the
+    # arrangement description. The preset's genre words lead so they survive
+    # truncation, and the user's own wording slots in as atmosphere.
+    genre_bits = [tag.strip() for tag in blueprint.genre_tags.split(",") if tag.strip()]
+    style = ", ".join([*genre_bits, f"{mood} {genre}"])
+    parts = [f"{style}: {', '.join(instruments)}" if instruments else style]
+    parts.append(_qualitative_tempo(blueprint.tempo_bpm))
+    parts.append(blueprint.prompt.strip())
+    parts.append(_FOCUS_CAPTION_PHRASES.get(blueprint.focus, ""))
+    parts.append(_SECTION_CAPTION_PHRASES.get(blueprint.section.strip(), ""))
+    parts.append(_continuity_phrase(blueprint))
     return append_prompt_parts(parts)
 
 

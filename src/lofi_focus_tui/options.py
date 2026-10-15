@@ -59,6 +59,10 @@ class PresetVariant:
 class PresetOption:
     value: MusicPresetValue
     description: str
+    # Genre words the caption leads with; ACE-Step anchors hardest on these,
+    # so each preset must name its genre explicitly (e.g. jazz_vinyl says
+    # "jazz, vinyl") instead of relying on the generic lo-fi umbrella.
+    genre_tags: str
     tempo_range: tuple[int, int]
     variants: tuple[PresetVariant, ...]
 
@@ -103,6 +107,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.CLASSIC_LOFI: PresetOption(
         MusicPresetValue.CLASSIC_LOFI,
         "dusty keys, swung drums, round bass",
+        "lo-fi hip hop",
         (70, 90),
         (
             PresetVariant(
@@ -160,6 +165,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.NEO_SOUL: PresetOption(
         MusicPresetValue.NEO_SOUL,
         "warm chords, pocketed rhythm, mellow bass",
+        "neo soul",
         (65, 85),
         (
             PresetVariant(
@@ -217,6 +223,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.AMBIENT_TAPE: PresetOption(
         MusicPresetValue.AMBIENT_TAPE,
         "sparse pulse, wide pads, tape haze",
+        "ambient",
         (60, 80),
         (
             PresetVariant(
@@ -274,6 +281,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.JAZZ_VINYL: PresetOption(
         MusicPresetValue.JAZZ_VINYL,
         "brushed drums, jazz harmony, vinyl texture",
+        "jazz, vinyl",
         (65, 85),
         (
             PresetVariant(
@@ -331,6 +339,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.LOFI_HOUSE: PresetOption(
         MusicPresetValue.LOFI_HOUSE,
         "washed chord stabs, four-on-the-floor, tape hiss",
+        "lo-fi house",
         (110, 125),
         (
             PresetVariant(
@@ -388,6 +397,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.SYNTHWAVE: PresetOption(
         MusicPresetValue.SYNTHWAVE,
         "analog arps, gated drums, neon nostalgia",
+        "synthwave",
         (80, 110),
         (
             PresetVariant(
@@ -445,6 +455,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.CITY_POP: PresetOption(
         MusicPresetValue.CITY_POP,
         "funky bass, bright keys, 80s sheen",
+        "city pop",
         (100, 115),
         (
             PresetVariant(
@@ -502,6 +513,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.BOOM_BAP: PresetOption(
         MusicPresetValue.BOOM_BAP,
         "gritty breaks, sampled chops, vinyl grit",
+        "boom bap hip hop",
         (75, 95),
         (
             PresetVariant(
@@ -559,6 +571,7 @@ PRESET_OPTIONS = {
     MusicPresetValue.PEACEFUL_PIANO: PresetOption(
         MusicPresetValue.PEACEFUL_PIANO,
         "felt piano, dreamy pads, near-weightless",
+        "peaceful piano",
         (60, 75),
         (
             PresetVariant(

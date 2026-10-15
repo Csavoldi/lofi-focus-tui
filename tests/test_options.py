@@ -611,3 +611,20 @@ def test_every_music_preset_carries_a_tempo_range():
     assert {
         value: option.tempo_range for value, option in PRESET_OPTIONS.items()
     } == expected
+
+
+def test_every_music_preset_names_its_genre_for_the_caption():
+    expected = {
+        "classic_lofi": "lo-fi hip hop",
+        "neo_soul": "neo soul",
+        "ambient_tape": "ambient",
+        "jazz_vinyl": "jazz, vinyl",
+        "lofi_house": "lo-fi house",
+        "synthwave": "synthwave",
+        "city_pop": "city pop",
+        "boom_bap": "boom bap hip hop",
+        "peaceful_piano": "peaceful piano",
+    }
+    assert {
+        value: option.genre_tags for value, option in PRESET_OPTIONS.items()
+    } == expected

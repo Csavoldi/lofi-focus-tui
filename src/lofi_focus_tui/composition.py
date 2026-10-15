@@ -21,6 +21,7 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
         drum_feel=variant.drum_feel,
         bass_behavior=variant.bass_behavior,
         texture_layers=plan.style_traits,
+        genre_tags=preset.genre_tags,
         arrangement_sections=list(focus.arrangement_sections),
         boundary_constraints=[
             "preserve stable tempo",

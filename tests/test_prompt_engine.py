@@ -49,17 +49,35 @@ def golden_blueprint():
 
 def test_compose_local_prompt_has_canonical_golden_output(golden_blueprint):
     assert compose_local_prompt(golden_blueprint) == (
-        "rainy room. relaxed instrumental lo-fi: motif, drums, bass, dusty tape, soft piano. "
-        "unobtrusive and hypnotic for deep focus. minimal variation, stable tempo, "
-        "smooth transitions, recurring motif"
+        "relaxed instrumental lo-fi: motif, drums, bass, dusty tape, soft piano. "
+        "easy mid-tempo pulse. rainy room. unobtrusive and hypnotic for deep focus. "
+        "minimal variation, stable tempo, smooth transitions, recurring motif"
     )
+
+
+def test_compose_local_prompt_leads_with_preset_genre_tags():
+    plan = expand_preset(make_request(preset="jazz_vinyl", seed=2))
+
+    result = compose_local_prompt(create_blueprint(plan))
+
+    assert result.startswith("jazz, vinyl, ")
+    assert "instrumental lo-fi:" in result
+
+
+def test_compose_local_prompt_adds_qualitative_tempo(golden_blueprint):
+    golden_blueprint.tempo_bpm = 74
+    assert "slow, unhurried tempo" in compose_local_prompt(golden_blueprint)
+    golden_blueprint.tempo_bpm = 112
+    assert "steady up-tempo pulse" in compose_local_prompt(golden_blueprint)
+    golden_blueprint.tempo_bpm = 122
+    assert "driving up-tempo momentum" in compose_local_prompt(golden_blueprint)
 
 
 def test_compose_local_prompt_marks_vocal_mode_in_genre(golden_blueprint):
     golden_blueprint.vocal_mode = "vocals"
 
     assert compose_local_prompt(golden_blueprint).startswith(
-        "rainy room. relaxed lo-fi with vocals:"
+        "relaxed lo-fi with vocals:"
     )
 
 
@@ -75,7 +93,7 @@ def test_compose_local_prompt_handles_category_only_and_empty_items(golden_bluep
 
     assert result == (
         "relaxed instrumental lo-fi: motif, drums, bass, rain. "
-        "unobtrusive and hypnotic for deep focus"
+        "easy mid-tempo pulse. unobtrusive and hypnotic for deep focus"
     )
     assert "  " not in result
 
@@ -85,7 +103,7 @@ def test_compose_local_prompt_is_deterministic_and_preserves_user_wording(golden
     second = compose_local_prompt(golden_blueprint)
 
     assert first == second
-    assert first.startswith("rainy room. ")
+    assert "rainy room" in first
     assert ". " in first
 
 
@@ -169,7 +187,7 @@ def test_compose_instrumental_lyrics_is_empty_for_vocal_mode(golden_blueprint):
 
 
 def test_key_scale_for_metadata_maps_app_keys_to_model_anchor_keys():
-    assert key_scale_for_metadata("minor pentatonic") == "A minor"
+    assert key_scale_for_metadata("minor pentatonic") == "A Minor"
     assert key_scale_for_metadata(" D minor ") == "D minor"
 
 

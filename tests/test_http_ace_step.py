@@ -159,7 +159,7 @@ def test_http_adapter_generates_audio_from_remote_task():
                 "lyrics": "[Instrumental]",
                 "temperature": 0.85,
                 "param_obj": (
-                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"A minor",'
+                    f'{{"bpm":{blueprint.tempo_bpm},"duration":10,"key":"A Minor",'
                     '"language":"unknown","time_signature":"4"}'
                 ),
             }
@@ -191,7 +191,7 @@ def test_http_adapter_generates_audio_from_remote_task():
             assert payload["use_random_seed"] is False
             assert payload["seed"] == 456
             assert payload["bpm"] == blueprint.tempo_bpm
-            assert payload["key_scale"] == "A minor"
+            assert payload["key_scale"] == "A Minor"
             assert payload["time_signature"] == "4"
             assert payload["prompt"] == "late-night rainy room. formatted rainy room"
             assert payload["lyrics"] == "[Instrumental]"
