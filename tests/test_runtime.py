@@ -1,12 +1,6 @@
 from lofi_focus_tui import cli
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
-
-# Obviously-fake placeholder credentials; assembled so no literal ever sits in
-# an api_key assignment and credential scanners stay quiet.
-_PLACEHOLDER_KEY = "test-" + "key"
-_PLACEHOLDER_RUNPOD_KEY = "test-" + "runpod-" + "key"
-
 from lofi_focus_tui.config import (
     AceStepHttpConfig,
     AppConfig,
@@ -20,6 +14,11 @@ from lofi_focus_tui.generation.mock import MockModelAdapter
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.history import HistoryStore
 from lofi_focus_tui.runtime import build_model, build_playback, build_session_manager
+
+# Obviously-fake placeholder credentials; assembled so no literal ever sits in
+# an api_key assignment and credential scanners stay quiet.
+_PLACEHOLDER_KEY = "test-" + "key"
+_PLACEHOLDER_RUNPOD_KEY = "test-" + "runpod-" + "key"
 
 
 def test_cli_main_reuses_one_config_for_manager_and_app(monkeypatch):

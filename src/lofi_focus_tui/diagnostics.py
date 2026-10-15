@@ -14,7 +14,9 @@ from lofi_focus_tui.devices import choose_device
 
 DiagnosticStatus = Literal["ok", "warn", "fail"]
 ImportChecker = Callable[[str], bool]
-ServiceProbe = Callable[[str], bool]
+# Probe result: True = verified ACE-Step API, False = unreachable,
+# "wrong-service" = something else answers on that port.
+ServiceProbe = Callable[[str], bool | str]
 
 # Turbo checkpoints are tuned for ~8 diffusion steps; far larger values only
 # slow every generation down (guidance affects base/sft models only).
@@ -126,11 +128,20 @@ def _check_generation_settings(config: AppConfig) -> DiagnosticCheck:
 def _check_ace_step_service(config: AppConfig, probe: ServiceProbe) -> DiagnosticCheck:
     base_url = config.ace_step_http.base_url
     try:
-        reachable = probe(base_url)
+        result = probe(base_url)
     except Exception:
-        reachable = False
-    if reachable:
+        result = False
+    if result is True:
         return DiagnosticCheck("ace-step service", "ok", f"reachable at {base_url}")
+    if result == "wrong-service":
+        return DiagnosticCheck(
+            "ace-step service",
+            "warn",
+            f"another HTTP service answers at {base_url} but it does not expose the "
+            "ACE-Step task API (/release_task) — check the host and port, or start "
+            "the API server on the GPU host with `uv run acestep-api` "
+            "(see docs/ace-step.md)",
+        )
     return DiagnosticCheck(
         "ace-step service",
         "warn",
@@ -139,7 +150,7 @@ def _check_ace_step_service(config: AppConfig, probe: ServiceProbe) -> Diagnosti
     )
 
 
-def _probe_http_service(base_url: str) -> bool:
+def _probe_http_service(base_url: str) -> bool | str:
     # The URL comes from the user's own config.toml and deliberately targets a
     # private LAN host (or localhost) running ACE-Step, so private ranges stay
     # allowed; only plain HTTP(S) is accepted and redirects are never followed
@@ -147,10 +158,19 @@ def _probe_http_service(base_url: str) -> bool:
     parsed = urlparse(base_url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
-    response = httpx.get(
-        f"{parsed.scheme}://{parsed.netloc}/health", timeout=5.0, follow_redirects=False
-    )
-    return response.is_success
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    health = httpx.get(f"{root}/health", timeout=5.0, follow_redirects=False)
+    if not health.is_success:
+        return False
+    # A bare 200 is not proof: TTS servers and other LAN services also answer
+    # /health. Verify the ACE-Step task API is actually mounted here.
+    try:
+        spec = httpx.get(f"{root}/openapi.json", timeout=5.0, follow_redirects=False)
+        if spec.is_success and "release_task" in spec.text:
+            return True
+    except httpx.HTTPError:
+        pass
+    return "wrong-service"
 
 
 def _module_available(module: str) -> bool:

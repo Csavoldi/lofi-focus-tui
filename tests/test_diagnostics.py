@@ -103,3 +103,24 @@ def test_run_diagnostics_reports_reachable_service(tmp_path):
     by_name = {check.name: check for check in checks}
     assert by_name["ace-step service"].status == "ok"
     assert probed == ["http://127.0.0.1:8001"]
+
+
+def test_run_diagnostics_distinguishes_wrong_service_on_the_port(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "[generation]\nbackend = \"ace-step-http\"\n",
+        encoding="utf-8",
+    )
+
+    checks = run_diagnostics(
+        config_path=config_path,
+        cache_dir=tmp_path / "cache",
+        import_checker=lambda module: False,
+        service_probe=lambda base_url: "wrong-service",
+    )
+
+    by_name = {check.name: check for check in checks}
+    service = by_name["ace-step service"]
+    assert service.status == "warn"
+    assert "another HTTP service answers" in service.message
+    assert "/release_task" in service.message
