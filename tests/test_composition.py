@@ -202,5 +202,39 @@ def test_chunk_blueprint_carries_continuation_constraints():
     )
 
     assert blueprint.continuation_constraints == [
-        "avoid a sharp transient at the transition"
+        "avoid a sharp transient at the transition",
+        # chunk 1 of 2 is the final chunk: it must enter mid-groove, and the
+        # fade-out constraint belongs to non-final chunks only.
+        "begins mid-groove at full energy, continuing the established texture",
     ]
+
+
+def test_chunk_blueprint_adds_boundary_continuity_constraints_per_position():
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+
+    first = create_chunk_blueprint(plan, chunk_index=0, chunk_count=3)
+    middle = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+    last = create_chunk_blueprint(plan, chunk_index=2, chunk_count=3)
+
+    tail = "carries full energy through the final bar, ending mid-groove"
+    head = "begins mid-groove at full energy, continuing the established texture"
+    assert tail in first.continuation_constraints
+    assert head not in first.continuation_constraints
+    assert tail in middle.continuation_constraints
+    assert head in middle.continuation_constraints
+    assert head in last.continuation_constraints
+    assert tail not in last.continuation_constraints
+
+    # The constraints are positive music captions, so the prompt engine must
+    # keep them verbatim instead of dropping them as negations.
+    from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+
+    assert tail in compose_local_prompt(first)
+    assert head in compose_local_prompt(last)

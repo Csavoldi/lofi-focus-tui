@@ -1,9 +1,11 @@
 from concurrent.futures import CancelledError, Future, ThreadPoolExecutor, TimeoutError
+from dataclasses import replace
 from datetime import UTC, datetime
 from inspect import signature
-from math import ceil
+from math import ceil, exp
 from pathlib import Path
 from threading import Lock
+from time import monotonic
 from uuid import uuid4
 
 from lofi_focus_tui.audio.continuity import (
@@ -11,7 +13,7 @@ from lofi_focus_tui.audio.continuity import (
     analyze_chunk,
     continuation_notes,
 )
-from lofi_focus_tui.audio.normalization import crossfade
+from lofi_focus_tui.audio.normalization import crossfade, ensure_stereo, trim_edge_silence
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.playback import PlaybackManager
 from lofi_focus_tui.backend.tasks import GenerationTask
@@ -39,7 +41,7 @@ class SessionManager:
         generation_defaults: GenerationSettings | None = None,
         render_seconds_limit: int | None = None,
         chunk_seconds: int | None = None,
-        crossfade_seconds: float = 1.0,
+        crossfade_seconds: float = 2.0,
         playback: PlaybackManager | None = None,
         output_manager: OutputManager | None = None,
         history_store: HistoryStore | None = None,
@@ -65,6 +67,9 @@ class SessionManager:
         self._running_tasks = 0
         self._closed = False
         self._resources_closed = False
+        self._generation_started: float | None = None
+        self._chunk_started: float | None = None
+        self._chunk_seconds: float | None = None
         self._status = BackendStatus(
             state=BackendState.IDLE,
             message="ready",
@@ -76,7 +81,37 @@ class SessionManager:
     def health(self) -> BackendStatus:
         with self._lock:
             status = self._status.model_copy()
-        return status.model_copy(update=self._playback_status_fields())
+            live_fields = self._live_generation_fields_locked(status)
+        return status.model_copy(update={**live_fields, **self._playback_status_fields()})
+
+    def _live_generation_fields_locked(self, status: BackendStatus) -> dict[str, float | str]:
+        """Animate progress while a generation runs.
+
+        The remote backends expose no progress channel, so the stored status
+        would otherwise sit at a fixed value for the whole wait. Derived fields
+        creep asymptotically toward the next chunk boundary and never overtake
+        real chunk completions.
+        """
+        if status.state != BackendState.GENERATING or status.chunk_count == 0:
+            return {}
+        if self._generation_started is None:
+            return {}
+        now = monotonic()
+        elapsed = now - self._generation_started
+        chunk_elapsed = now - self._chunk_started if self._chunk_started is not None else elapsed
+        expected = 15.0
+        if self._chunk_seconds:
+            # Observed wall-clock for turbo steps runs at roughly half the
+            # audio duration plus fixed overhead; used only as the crawl rate.
+            expected = max(15.0, 0.5 * self._chunk_seconds + 15.0)
+        fraction = 1.0 - exp(-chunk_elapsed / expected)
+        share = (status.chunk_index + 0.95 * fraction) / status.chunk_count
+        progress = min(0.95, 0.05 + 0.9 * share)
+        chunk_label = ""
+        if status.chunk_count > 1:
+            chunk_label = f"chunk {status.chunk_index + 1}/{status.chunk_count}, "
+        message = f"generating {chunk_label}{int(elapsed)}s elapsed"
+        return {"progress": progress, "message": message}
 
     def start_session(self, request: SessionRequest) -> BackendStatus:
         self._ensure_open()
@@ -265,6 +300,8 @@ class SessionManager:
     ) -> None:
         with self._lock:
             self._running_tasks += 1
+            self._generation_started = monotonic()
+            self._chunk_started = self._generation_started
         try:
             if self._is_active_task(task):
                 self._update_task_status(
@@ -342,6 +379,10 @@ class SessionManager:
                 task.output_path = output_path
             if error is not None:
                 task.error = error
+            if state != BackendState.GENERATING:
+                self._generation_started = None
+                self._chunk_started = None
+                self._chunk_seconds = None
             self._status = BackendStatus(
                 state=task.state,
                 message=task.message,
@@ -394,6 +435,9 @@ class SessionManager:
         handoff: list[str] = []
         for chunk_index, chunk_duration in enumerate(chunk_durations):
             self._raise_if_cancelled(task)
+            with self._lock:
+                self._chunk_started = monotonic()
+                self._chunk_seconds = float(chunk_duration)
             chunk_blueprint = (
                 blueprint
                 if chunk_count == 1
@@ -412,6 +456,7 @@ class SessionManager:
                 settings=settings,
             )
             self._raise_if_cancelled(task)
+            result = self._trim_internal_chunk_edges(result, chunk_index, chunk_count)
             retry_count = 0
             boundary_report = None
             if chunk_results:
@@ -464,6 +509,33 @@ class SessionManager:
             )
         return self._stitch_chunk_results(plan.session_id, chunk_results, chunk_metadata)
 
+    @staticmethod
+    def _trim_internal_chunk_edges(
+        result: GenerationResult,
+        chunk_index: int,
+        chunk_count: int,
+    ) -> GenerationResult:
+        """Drop the model's song-ending fades at internal chunk boundaries.
+
+        The first chunk keeps its intro and the last keeps its outro; only the
+        trailing fade of non-final chunks and the leading fade of non-first
+        chunks are removed so the crossfade joins energetic passages.
+        """
+        if chunk_count <= 1:
+            return result
+        audio = result.audio
+        if chunk_index < chunk_count - 1:
+            audio = trim_edge_silence(audio, result.sample_rate, edge="end")
+        if chunk_index > 0:
+            audio = trim_edge_silence(audio, result.sample_rate, edge="start")
+        if audio is result.audio:
+            return result
+        return replace(
+            result,
+            audio=audio,
+            duration_seconds=len(audio) / result.sample_rate,
+        )
+
     def _generate_chunk(
         self,
         task: GenerationTask,
@@ -474,13 +546,15 @@ class SessionManager:
         generate = self.model.generate
         parameters = signature(generate).parameters
         if "cancel_event" in parameters:
-            return generate(
+            result = generate(
                 blueprint,
                 duration_seconds=duration_seconds,
                 settings=settings,
                 cancel_event=task.cancel_event,
             )
-        return generate(blueprint, duration_seconds=duration_seconds, settings=settings)
+        else:
+            result = generate(blueprint, duration_seconds=duration_seconds, settings=settings)
+        return replace(result, audio=ensure_stereo(result.audio))
 
     @staticmethod
     def _raise_if_cancelled(task: GenerationTask) -> None:

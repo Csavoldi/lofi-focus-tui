@@ -45,9 +45,21 @@ def create_chunk_blueprint(
     section = blueprint.arrangement_sections[
         min(chunk_index, len(blueprint.arrangement_sections) - 1)
     ]
+    constraints = list(continuation_constraints or [])
+    if chunk_count > 1:
+        # The model tends to treat every generation as a complete song, fading
+        # out at the end and fading in at the start; at internal chunk
+        # boundaries those fades stack into seconds of near-silence. Ask for
+        # energy held through the final bar / a mid-groove entry instead.
+        if chunk_index < chunk_count - 1:
+            constraints.append("carries full energy through the final bar, ending mid-groove")
+        if chunk_index > 0:
+            constraints.append(
+                "begins mid-groove at full energy, continuing the established texture"
+            )
     return blueprint.model_copy(
         update={
             "section": section,
-            "continuation_constraints": continuation_constraints or [],
+            "continuation_constraints": constraints,
         }
     )

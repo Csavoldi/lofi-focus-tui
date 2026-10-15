@@ -76,6 +76,20 @@ def test_http_adapter_wraps_unreachable_service_errors():
         adapter.generate(make_blueprint(), duration_seconds=1)
 
 
+def test_http_adapter_wraps_mid_request_connection_resets():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError("[Errno 104] Connection reset by peer")
+
+    adapter = AceStepHttpAdapter(
+        base_url="http://ace.test",
+        transport=httpx.MockTransport(handler),
+        poll_interval_seconds=0.0,
+    )
+
+    with pytest.raises(RuntimeError, match="lost connection to the ACE-Step service"):
+        adapter.generate(make_blueprint(), duration_seconds=1)
+
+
 def test_task_result_parses_double_encoded_audio_result():
     result = TaskResult.from_payload(
         {

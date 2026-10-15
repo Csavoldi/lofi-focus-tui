@@ -133,12 +133,22 @@ class AceStepHttpAdapter:
             return self.client.post(path, json=json, headers=self._headers(), timeout=timeout)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise RuntimeError(f"cannot reach ACE-Step service at {self.base_url}: {exc}") from exc
+        except httpx.TransportError as exc:
+            raise RuntimeError(
+                f"lost connection to the ACE-Step service at {self.base_url} "
+                "(it may be restarting): {exc}"
+            ) from exc
 
     def _get(self, path: str, params: dict) -> httpx.Response:
         try:
             return self.client.get(path, params=params, headers=self._headers())
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise RuntimeError(f"cannot reach ACE-Step service at {self.base_url}: {exc}") from exc
+        except httpx.TransportError as exc:
+            raise RuntimeError(
+                f"lost connection to the ACE-Step service at {self.base_url} "
+                "(it may be restarting): {exc}"
+            ) from exc
 
     def close(self) -> None:
         with self._close_lock:
