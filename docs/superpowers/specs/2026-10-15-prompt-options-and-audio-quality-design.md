@@ -1,7 +1,7 @@
 # Design: Prompt Options Refactor + Delivery-Grade Audio Quality
 
 - **Date:** 2026-10-15
-- **Status:** Approved design (Sections 1, 3, 4 user-approved; Section 2 unopposed — derived from official API.md and the "raise fixed defaults" decision, flagged below for spec review)
+- **Status:** Approved design (Sections 1, 3, 4 user-approved; Section 2 unopposed — derived from official API.md and the "raise fixed defaults" decision, flagged for owner sign-off at review). Spec-document review: Approved; reviewer's four minor corrections folded in (smoothness-phrase slot, SessionPlan pin threading, style-pick deduplication between slots 1/3, in-process 2-D producers) plus the playback clip-guard note.
 - **Backlog task:** TASK-12
 - **Sources:** ACE-Step-1.5 official `docs/en/Tutorial.md`, `docs/en/ace_step_musicians_guide.md`, `docs/en/API.md`; deapi.ai prompting guide; AmbienceAI tutorial; ComfyUI ACE-Step 1.5 docs; dev.to 2026 guide; HN/r/LocalLLaMA prompt-tips thread; r/StableDiffusion "Suno 4.5 killer" settings thread; Zenn "Retake" article. Repo UAT findings (2026-10-15) and `scripts/listen.py` measurement harness.
 
@@ -54,6 +54,7 @@ Home screen keeps the single-pane layout; the session summary pane renders three
 ### 1.3 Domain & composition changes
 
 - `SessionRequest` (`domain.py`) gains `keys_choice: str | None = None`, `drums_choice`, `bass_choice` (None = auto), `texture: str | None = None` (None = preset default).
+- The pins thread through `SessionPlan` and `expand_preset` (`presets.py`) the same way `style_tags → plan.style_traits` flows today — `SessionRequest → SessionPlan → blueprint` — before reaching `create_blueprint`.
 - `create_blueprint` (`composition.py`): when a pin is set, validate it against the active preset's variant pool and use it instead of the seed pick; invalid pin → fall back to auto (and record a warning in the session metadata). Texture resolves to the effective value (request → preset default → `clean`) and is added to the blueprint.
 - Blueprints stay deterministic for a given (preset, duration, style, seed, pins) — the deterministic-seed tests extend naturally.
 
@@ -63,16 +64,17 @@ Owns caption assembly; `prompt_engine.py` retains lyrics, metadata mapping, `/fo
 
 **Slots, in the already-validated order:**
 
-1. Genre block — preset's primary genre + **at most one modifier**: the user's `style_tags` pick replaces the preset's built-in modifier when set (never stacks two modifiers).
+1. Genre block — preset's primary genre + **at most one modifier**: the user's `style_tags` pick replaces the preset's built-in modifier when set (never stacks two modifiers). Once the style pick occupies the genre-modifier slot it is **removed from `texture_layers`/slot 3**, where it flows today — no tag appears in both slots.
 2. Mood/instrumental phrase — `"<mood> instrumental lo-fi"` as today.
 3. Instruments — pinned (or seed-picked) motif + drum_feel + bass_behavior + texture layers (incl. the pad bed).
 4. Production — effective texture phrase (Section 1.2).
 5. Qualitative tempo — unchanged `_qualitative_tempo` (numeric BPM stays metadata-only, per official Tutorial).
-6. User free-form prompt (unchanged, passes `prompt_safety`).
-7. Focus phrase + section phrase (unchanged).
-8. Continuity constraints, positively rewritten (unchanged).
+6. Energy-scaled smoothness phrase — unchanged `_SMOOTHNESS_PHRASES` sentence (the measured anti-"~30 dB dip" fix); sentence-level, outside the tag budget.
+7. User free-form prompt (unchanged, passes `prompt_safety`).
+8. Focus phrase + section phrase (unchanged).
+9. Continuity constraints, positively rewritten (unchanged).
 
-**Budget rule:** slots 1–5 form the comma-tag block, capped at **12 substantive tags**. Overflow drops by priority (lowest first): extra mood adjectives → auxiliary descriptors → production texture → non-pinned instrument descriptors. Never dropped: primary genre, vocal-mode phrase, pinned instruments, qualitative tempo. Sentences (slots 6–8) are outside the tag budget.
+**Budget rule:** slots 1–5 form the comma-tag block, capped at **12 substantive tags**. Overflow drops by priority (lowest first): extra mood adjectives → auxiliary descriptors → production texture → non-pinned instrument descriptors. Never dropped: primary genre, vocal-mode phrase, pinned instruments, qualitative tempo. Sentences (slots 6–9) are outside the tag budget.
 
 **Conflict rules:** primary genre is mandatory and always the preset's own; one modifier max (1.4 rule above); pinned vocabulary is preset-scoped so pins cannot contradict the genre; contradictory free-text remains the job of `prompt_safety`.
 
@@ -104,7 +106,7 @@ server wav32 (48 kHz float)
 
 ### 3.1 True stereo
 
-- `read_wav_bytes` (`audio/wav.py`) stops averaging to mono: returns 2-D `(samples, channels)` float arrays (mono = `(n, 1)`). Internal pipeline (`normalization.py`, `continuity.py`, `session_manager.py`, `playback.py`, `player.py`) standardizes on 2-D arrays.
+- `read_wav_bytes` (`audio/wav.py`) stops averaging to mono: returns 2-D `(samples, channels)` float arrays (mono = `(n, 1)`). The 2-D shape is standardized at the **generation-adapter boundary** so in-process producers conform too — `MockModelAdapter` (`generation/mock.py`) and the embedded adapter emit `(n, 1)` — and the whole pipeline (`normalization.py`, `continuity.py`, `session_manager.py`, `playback.py`, `player.py`) handles 2-D only.
 - `ensure_stereo` upmixes only genuine mono (duplicated channels), never collapses.
 
 ### 3.2 Crossfade
@@ -117,7 +119,7 @@ server wav32 (48 kHz float)
 - `apply_master(audio, sr, target_lufs, ceiling_dbtp)`: measure → bounded linear gain (±24 dB safety) → limiter → re-measure once if ceiling engagement pulled loudness down (max 2 iterations) → return mastered audio + metrics.
 - `write_wav24`: soundfile `PCM_24` with TPDF dither applied at quantization.
 - Session metadata records pre/post LUFS, applied gain, true-peak, and limiter engagement.
-- **Live playback**: per-chunk *gain-only* loudness matching to the same target (measure + linear gain, no limiter) so listening during a session approximates the final file without pumping at boundaries; the deliverable gets the full chain at save.
+- **Live playback**: per-chunk *gain-only* loudness matching to the same target (measure + linear gain, no limiter) so listening during a session approximates the final file without pumping at boundaries; a hard safety clip at −1 dBFS guards the gain-up path since there is no limiter. The deliverable gets the full chain at save.
 - Config: `[master] enabled = true, target_lufs = -14.0, ceiling_dbtp = -1.0`.
 - Robustness: NaN/Inf guard (skip mastering, keep unmastered audio + metadata warning); gain bound; decode fallback — `soundfile` handles non-PCM/wav32 payloads if the `wave` fast path declines.
 
@@ -135,7 +137,7 @@ server wav32 (48 kHz float)
 |---|---|
 | Cyclers + state + persistence | `tui/app.py` (state ~120–126, cyclers ~232–250, bindings 62–84), new `UiStateStore` |
 | Catalogs | `options.py` (`TEXTURE_OPTIONS`, preset `default_texture`) |
-| Request fields | `domain.py` (`SessionRequest`) |
+| Request fields | `domain.py` (`SessionRequest`, `SessionPlan`), `presets.py` (`expand_preset` pin threading) |
 | Pin resolution | `composition.py` (`create_blueprint` ~10–43) |
 | Caption assembly | new `generation/tag_composer.py`; `prompt_engine.compose_local_prompt` (~133–161) delegates |
 | API payload | `generation/http_ace_step.py` (`submit_task` payload ~226–242); `generation/settings.py`; `config.py` |
