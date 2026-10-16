@@ -122,6 +122,42 @@ take while new sessions explore the pool. Style tags such as `rainy, mellow` or
 
 See [`docs/usage.md`](docs/usage.md) for the full option lists and guide behavior.
 
+### The quality loop
+
+A built-in producer loop scores every generated session and adjusts prompts to
+fix what each take got wrong:
+
+- **Scoring:** a 60-second excerpt is rated with
+  [AudioBox Aesthetics](https://github.com/facebookresearch/audiobox-aesthetics)
+  (PQ/CE/CU/PC, 1–10, human-rater trained), plus loudness-envelope
+  measurements (`dip_ratio`, `sustained_fraction`) computed locally on every
+  track. The status line shows the result during playback:
+  `playing · quality PQ 8.2`.
+- **Auto refinement:** weak takes (CE/CU/PQ below 6.0, or dip/bed thresholds
+  crossed) are regenerated with escalated prompt wording and a fresh seed
+  *before* you hear them; the best attempt is the one saved and played.
+- **Next-session adjustment:** the scored report feeds adjustment phrases into
+  the next session's caption, so the prompt keeps improving run over run.
+
+Enable it in `config.toml`:
+
+```toml
+[quality]
+backend = "audiobox"
+auto_refine = true
+max_refinement_attempts = 2   # total takes per session (2 = one retry)
+```
+
+The repo's `config.example.toml` ships `backend = "none"`, which still records
+the envelope measurements but scores nothing. With `backend = "audiobox"` but
+the `audiobox_aesthetics` package missing, reports degrade to envelope-only —
+sessions never fail because of analysis. Install it with
+`uv pip install --python .venv/bin/python audiobox_aesthetics requests` when
+you want scores. `scripts/tune_prompts.py` runs the same engine offline to
+tune preset words; `scripts/listen.py` A/B-compares any set of saved takes.
+
+Full guide: [`docs/quality-loop.md`](docs/quality-loop.md).
+
 ### Troubleshooting
 
 - **ACE-Step health check fails:** verify that the remote service is running at
