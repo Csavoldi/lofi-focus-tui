@@ -1,6 +1,11 @@
 from lofi_focus_tui.domain import CompositionBlueprint, SessionPlan
 from lofi_focus_tui.options import FOCUS_OPTIONS, PRESET_OPTIONS
 
+# Every focus session asks for a continuous bed under the beat: without it
+# the model defaults to a sparse drum-forward mix whose ~30 dB dips between
+# beat events read as hiccups (measured 2026-10-15, scripts/listen.py).
+BED_TEXTURE_LAYER = "sustained warm pad bed"
+
 
 def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
     low, high = plan.tempo_range
@@ -8,6 +13,9 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
     focus = FOCUS_OPTIONS[plan.focus]
     preset = PRESET_OPTIONS[plan.preset]
     variant = preset.variants[plan.seed % len(preset.variants)]
+    texture_layers = list(plan.style_traits)
+    if BED_TEXTURE_LAYER not in texture_layers:
+        texture_layers.append(BED_TEXTURE_LAYER)
 
     return CompositionBlueprint(
         session_id=plan.session_id,
@@ -20,7 +28,7 @@ def create_blueprint(plan: SessionPlan) -> CompositionBlueprint:
         motif=variant.motif,
         drum_feel=variant.drum_feel,
         bass_behavior=variant.bass_behavior,
-        texture_layers=plan.style_traits,
+        texture_layers=texture_layers,
         genre_tags=preset.genre_tags,
         arrangement_sections=list(focus.arrangement_sections),
         boundary_constraints=[

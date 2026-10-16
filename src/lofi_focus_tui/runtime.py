@@ -1,4 +1,8 @@
-from lofi_focus_tui.audio.cache import default_history_path, default_output_dir
+from lofi_focus_tui.audio.cache import (
+    default_history_path,
+    default_output_dir,
+    default_refinement_path,
+)
 from lofi_focus_tui.audio.output import OutputManager
 from lofi_focus_tui.audio.playback import PlaybackManager
 from lofi_focus_tui.audio.player import NullPlayer, SoundDevicePlayer
@@ -14,8 +18,23 @@ from lofi_focus_tui.generation.ace_step import AceStepAdapter
 from lofi_focus_tui.generation.base import ModelAdapter
 from lofi_focus_tui.generation.http_ace_step import AceStepHttpAdapter
 from lofi_focus_tui.generation.mock import MockModelAdapter
+from lofi_focus_tui.generation.refiner import RefinementPolicy
 from lofi_focus_tui.generation.runpod import RunPodAceStepAdapter
 from lofi_focus_tui.history import HistoryStore
+from lofi_focus_tui.quality import AudioboxAnalyzer
+
+
+def build_quality_analyzer(config: AppConfig) -> AudioboxAnalyzer | None:
+    if config.quality.backend != "audiobox":
+        return None
+    return AudioboxAnalyzer(excerpt_seconds=config.quality.excerpt_seconds)
+
+
+def build_refinement_policy(config: AppConfig) -> RefinementPolicy | None:
+    quality = config.quality
+    if not quality.auto_refine or quality.backend != "audiobox":
+        return None
+    return RefinementPolicy(max_attempts=quality.max_refinement_attempts)
 
 
 def build_model(config: AppConfig | GenerationConfig) -> ModelAdapter:
@@ -59,4 +78,7 @@ def build_session_manager(config: AppConfig) -> SessionManager:
         playback=build_playback(config.playback),
         output_manager=OutputManager(default_output_dir()),
         history_store=HistoryStore(default_history_path()),
+        quality_analyzer=build_quality_analyzer(config),
+        refinement_path=default_refinement_path(),
+        refinement_policy=build_refinement_policy(config),
     )

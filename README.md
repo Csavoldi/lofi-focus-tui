@@ -191,5 +191,6 @@ More detail:
 
 - [Usage](docs/usage.md)
 - [Configuration](docs/configuration.md)
+- [Quality loop](docs/quality-loop.md)
 - [ACE-Step modes](docs/ace-step.md)
 - [User acceptance testing](docs/user-acceptance-testing.md)

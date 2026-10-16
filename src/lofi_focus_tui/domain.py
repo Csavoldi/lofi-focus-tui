@@ -166,6 +166,7 @@ class CompositionBlueprint(BaseModel):
     prompt: str = ""
     vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
     energy: EnergyLevel = EnergyLevel.STEADY
+    quality_adjustments: list[str] = Field(default_factory=list)
 
     @field_validator("vocal_mode", mode="before")
     @classmethod

@@ -85,6 +85,20 @@ _TEMPO_PHRASES = (
 )
 _TEMPO_PHRASE_MAX = "driving up-tempo momentum"
 
+# Smoothness asks, scaled by energy: without an explicit bed the model ships
+# a sparse drum-forward mix with ~30 dB dips between beat events that read as
+# hiccups (measured 2026-10-15, scripts/listen.py). Worded positively —
+# ACE-Step captions describe what the music does, never what it avoids.
+_SMOOTHNESS_PHRASES = {
+    EnergyLevel.LOW: (
+        "unbroken low-level flow, smoothly connected phrases over a held pad bed"
+    ),
+    EnergyLevel.STEADY: (
+        "continuous pad bed under the beat, smoothly connected phrases, steady relaxed pulse"
+    ),
+    EnergyLevel.HIGH: "continuous pad bed under the beat with connected phrases",
+}
+
 
 def _qualitative_tempo(bpm: int) -> str:
     for threshold, phrase in _TEMPO_PHRASES:
@@ -139,6 +153,9 @@ def compose_local_prompt(blueprint: CompositionBlueprint) -> str:
     style = ", ".join([*genre_bits, f"{mood} {genre}"])
     parts = [f"{style}: {', '.join(instruments)}" if instruments else style]
     parts.append(_qualitative_tempo(blueprint.tempo_bpm))
+    parts.append(_SMOOTHNESS_PHRASES.get(blueprint.energy, ""))
+    if blueprint.quality_adjustments:
+        parts.append(", ".join(blueprint.quality_adjustments))
     parts.append(blueprint.prompt.strip())
     parts.append(_FOCUS_CAPTION_PHRASES.get(blueprint.focus, ""))
     parts.append(_SECTION_CAPTION_PHRASES.get(blueprint.section.strip(), ""))

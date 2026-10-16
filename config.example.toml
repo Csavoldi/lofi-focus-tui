@@ -31,6 +31,19 @@ checkpoint_path = ""
 volume = 0.8
 fade_seconds = 1.5
 
+[quality]
+# Post-generation producer loop: "audiobox" scores every finished session
+# through AudioBox Aesthetics (optional extra; installed into the venv) and
+# adjusts prompts from the report. "none" disables scoring; local
+# loudness-envelope measurements still run either way.
+backend = "none"
+excerpt_seconds = 60.0
+# Auto-refinement regenerates takes that miss the quality targets before
+# playback, keeping the best attempt. max_refinement_attempts counts TOTAL
+# takes per session (2 = one retry).
+auto_refine = true
+max_refinement_attempts = 2
+
 [ace_step_http]
 # ACE-Step-1.5 REST API. Use http://LAN_IP:8001 when ACE-Step runs on
 # another machine on your LAN.

@@ -125,18 +125,48 @@ def test_start_session_returns_generating_before_generation_finishes():
 
 
 def test_generating_status_shows_elapsed_and_moving_progress():
-    model = BlockingRecordingModel()
+    class IndefiniteBlockingModel:
+        name = "indefinite-blocking"
+
+        def __init__(self) -> None:
+            self.started = Event()
+            self.release = Event()
+
+        def generate(self, blueprint, duration_seconds, settings=None):
+            self.started.set()
+            self.release.wait()
+            return GenerationResult(
+                audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+                sample_rate=44100,
+                duration_seconds=duration_seconds,
+                metadata={
+                    "session_id": blueprint.session_id,
+                    "backend": self.name,
+                    "output_path": f"{blueprint.session_id}.wav",
+                },
+            )
+
+    model = IndefiniteBlockingModel()
     manager = SessionManager(model=model)
     manager.start_session(make_request())
-
-    assert model.started.wait(timeout=2.0)
-    first = manager.health()
-    time.sleep(0.2)
-    second = manager.health()
-
-    model.release.set()
+    first = None
+    try:
+        assert model.started.wait(timeout=2.0)
+        # Freshly published status messages are held for a few seconds before
+        # the elapsed ticker takes the message line back.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            first = manager.health()
+            if "elapsed" in first.message:
+                break
+            time.sleep(0.2)
+        time.sleep(0.3)
+        second = manager.health()
+    finally:
+        model.release.set()
     final_status = manager.wait_for_active_task()
 
+    assert first is not None
     assert first.state == BackendState.GENERATING
     assert "elapsed" in first.message
     assert 0.0 < first.progress < 0.95
@@ -200,6 +230,75 @@ class FadingEdgeModel:
             duration_seconds=duration_seconds,
             metadata={"session_id": blueprint.session_id, "backend": self.name},
         )
+
+
+class FlakyChunkModel:
+    """Fails one chunk generation once, then succeeds — like a backend that
+    intermittently returns NaN latents."""
+
+    name = "flaky-chunk"
+    sample_rate = 1000
+
+    def __init__(self, fail_on_call: int = 1) -> None:
+        self.fail_on_call = fail_on_call
+        self.calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls += 1
+        if self.calls == self.fail_on_call:
+            raise RuntimeError("Music generation failed: NaN latents")
+        audio = np.full(duration_seconds * self.sample_rate, 0.2, dtype=np.float32)
+        return GenerationResult(
+            audio=audio,
+            sample_rate=self.sample_rate,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
+class AlwaysFailingModel:
+    name = "always-failing"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls += 1
+        raise RuntimeError("Music generation failed: NaN latents")
+
+
+def test_chunk_generation_retries_transient_backend_failure():
+    model = FlakyChunkModel(fail_on_call=2)
+    playback = RecordingPlayback()
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        chunk_seconds=10,
+        render_seconds_limit=20,  # two 10s chunks
+    )
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    assert model.calls == 3  # chunk 1 + chunk 2 failed once + chunk 2 retry
+
+
+def test_chunk_generation_fails_after_exhausted_retries():
+    model = AlwaysFailingModel()
+    manager = SessionManager(
+        model=model,
+        playback=RecordingPlayback(),
+        chunk_seconds=10,
+        render_seconds_limit=20,
+    )
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.ERROR
+    assert model.calls == 3  # max_chunk_attempts default
+    assert "failed after 3 attempts" in (final_status.error or "")
 
 
 def test_chunk_seams_do_not_dip_to_silence_when_model_fades_edges():
@@ -859,7 +958,8 @@ def test_generation_error_updates_backend_status():
 
     assert status.state == BackendState.GENERATING
     assert final_status.state == BackendState.ERROR
-    assert final_status.error == "generation exploded"
+    assert "failed after 3 attempts" in final_status.error
+    assert "generation exploded" in final_status.error
     assert final_status.message == "generation failed"
 
 

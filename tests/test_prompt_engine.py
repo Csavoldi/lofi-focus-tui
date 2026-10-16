@@ -50,9 +50,28 @@ def golden_blueprint():
 def test_compose_local_prompt_has_canonical_golden_output(golden_blueprint):
     assert compose_local_prompt(golden_blueprint) == (
         "relaxed instrumental lo-fi: motif, drums, bass, dusty tape, soft piano. "
-        "easy mid-tempo pulse. rainy room. unobtrusive and hypnotic for deep focus. "
-        "minimal variation, stable tempo, smooth transitions, recurring motif"
+        "easy mid-tempo pulse. continuous pad bed under the beat, smoothly connected "
+        "phrases, steady relaxed pulse. rainy room. unobtrusive and hypnotic for deep "
+        "focus. minimal variation, stable tempo, smooth transitions, recurring motif"
     )
+
+
+def test_compose_local_prompt_adds_smoothness_phrase_for_every_energy(golden_blueprint):
+    golden_blueprint.focus_constraints = []
+    golden_blueprint.boundary_constraints = []
+    golden_blueprint.continuation_constraints = []
+    golden_blueprint.prompt = ""
+    golden_blueprint.section = ""
+    golden_blueprint.focus = "reading"
+
+    golden_blueprint.energy = EnergyLevel.LOW
+    assert "held pad bed" in compose_local_prompt(golden_blueprint)
+    golden_blueprint.energy = EnergyLevel.STEADY
+    assert "continuous pad bed under the beat" in compose_local_prompt(golden_blueprint)
+    golden_blueprint.energy = EnergyLevel.HIGH
+    result = compose_local_prompt(golden_blueprint)
+    assert "continuous pad bed under the beat" in result
+    assert "steady relaxed pulse" not in result
 
 
 def test_compose_local_prompt_leads_with_preset_genre_tags():
@@ -93,7 +112,8 @@ def test_compose_local_prompt_handles_category_only_and_empty_items(golden_bluep
 
     assert result == (
         "relaxed instrumental lo-fi: motif, drums, bass, rain. "
-        "easy mid-tempo pulse. unobtrusive and hypnotic for deep focus"
+        "easy mid-tempo pulse. continuous pad bed under the beat, smoothly connected "
+        "phrases, steady relaxed pulse. unobtrusive and hypnotic for deep focus"
     )
     assert "  " not in result
 

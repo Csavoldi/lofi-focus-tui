@@ -2,6 +2,7 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor, Timeo
 from dataclasses import replace
 from datetime import UTC, datetime
 from inspect import signature
+from json import dumps, loads
 from math import ceil, exp
 from pathlib import Path
 from threading import Lock
@@ -26,10 +27,12 @@ from lofi_focus_tui.domain import (
     SessionRequest,
 )
 from lofi_focus_tui.generation.base import GenerationCancelledError, GenerationResult, ModelAdapter
+from lofi_focus_tui.generation.refiner import PromptRefiner, RefinementPolicy
 from lofi_focus_tui.generation.settings import GenerationSettings
 from lofi_focus_tui.history import HistoryStore, SessionRecord
 from lofi_focus_tui.presets import expand_preset
 from lofi_focus_tui.prompt_safety import map_style_tags
+from lofi_focus_tui.quality import AudioboxAnalyzer, QualityReport, build_report
 
 
 class SessionManager:
@@ -42,18 +45,26 @@ class SessionManager:
         render_seconds_limit: int | None = None,
         chunk_seconds: int | None = None,
         crossfade_seconds: float = 2.0,
+        max_chunk_attempts: int = 3,
         playback: PlaybackManager | None = None,
         output_manager: OutputManager | None = None,
         history_store: HistoryStore | None = None,
+        quality_analyzer: AudioboxAnalyzer | None = None,
+        refinement_path: Path | None = None,
+        refinement_policy: RefinementPolicy | None = None,
     ) -> None:
         self.model = model
         self.generation_defaults = generation_defaults
         self.render_seconds_limit = render_seconds_limit
         self.chunk_seconds = chunk_seconds
         self.crossfade_seconds = crossfade_seconds
+        self.max_chunk_attempts = max(1, max_chunk_attempts)
         self.playback = playback or PlaybackManager()
         self.output_manager = output_manager
         self.history_store = history_store
+        self.quality_analyzer = quality_analyzer
+        self.refinement_path = refinement_path
+        self.refinement_policy = refinement_policy
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lofi-generation")
         self._lock = Lock()
         self._futures_lock = Lock()
@@ -70,6 +81,7 @@ class SessionManager:
         self._generation_started: float | None = None
         self._chunk_started: float | None = None
         self._chunk_seconds: float | None = None
+        self._status_message_at: float = 0.0
         self._status = BackendStatus(
             state=BackendState.IDLE,
             message="ready",
@@ -107,6 +119,11 @@ class SessionManager:
         fraction = 1.0 - exp(-chunk_elapsed / expected)
         share = (status.chunk_index + 0.95 * fraction) / status.chunk_count
         progress = min(0.95, 0.05 + 0.9 * share)
+        # Keep freshly published status messages (chunk completions, retry
+        # notices) visible for a few seconds before the elapsed ticker
+        # takes the message line back.
+        if now - self._status_message_at < 4.0:
+            return {"progress": progress}
         chunk_label = ""
         if status.chunk_count > 1:
             chunk_label = f"chunk {status.chunk_index + 1}/{status.chunk_count}, "
@@ -119,6 +136,7 @@ class SessionManager:
         safe_request = request.model_copy(update={"style_tags": map_style_tags(request.style_tags)})
         plan = expand_preset(safe_request)
         blueprint = create_blueprint(plan)
+        blueprint = self._apply_refinement_adjustments(blueprint)
         duration_seconds, chunk_durations = self._resolve_timing(request, device)
         settings = request.generation or self.generation_defaults
         task = GenerationTask(task_id=str(uuid4()), session_id=plan.session_id)
@@ -321,6 +339,16 @@ class SessionManager:
                     settings=settings,
                     device_backend=device_backend,
                 )
+                result, final_report, refinement_log = self._refine_until_accepted(
+                    task,
+                    plan,
+                    blueprint,
+                    chunk_durations,
+                    settings,
+                    device_backend,
+                    result,
+                )
+                self._last_refinement_log = refinement_log
                 self._complete_task_success(
                     task,
                     request,
@@ -332,6 +360,9 @@ class SessionManager:
                     settings,
                     device_backend,
                 )
+            self._analyze_quality(
+                task, request, plan, result, device_backend, precomputed=final_report
+            )
         except Exception as exc:
             if isinstance(exc, GenerationCancelledError):
                 self._update_task_status(
@@ -359,6 +390,184 @@ class SessionManager:
             if should_finalize:
                 self._finalize_resources()
 
+    def _refine_until_accepted(
+        self,
+        task: GenerationTask,
+        plan,
+        blueprint,
+        chunk_durations: list[int],
+        settings: GenerationSettings | None,
+        device_backend: str,
+        result: GenerationResult,
+    ) -> tuple[GenerationResult, QualityReport | None, list[dict]]:
+        """Regenerate takes that miss the quality targets before playback.
+
+        Each retry carries the report-driven prompt adjustments (escalated
+        when the same aspect failed before) and a fresh seed; the strongest
+        take across attempts is the one the session delivers.
+        """
+        log: list[dict] = []
+        if self.refinement_policy is None or self.quality_analyzer is None:
+            return result, None, log
+
+        def score(candidate: GenerationResult) -> QualityReport:
+            scores = self.quality_analyzer.scores_for(
+                candidate.audio, candidate.sample_rate
+            )
+            return build_report(candidate.audio, candidate.sample_rate, scores)
+
+        report = score(result)
+        log.append(self._refinement_entry(1, blueprint, report))
+        best_result, best_report = result, report
+        best_rank = self.refinement_policy.rank(report)
+        refiner = PromptRefiner(self.refinement_policy)
+        max_attempts = self.refinement_policy.max_attempts
+
+        attempts = 1
+        while attempts < max_attempts and not self.refinement_policy.accepts(report):
+            self._raise_if_cancelled(task)
+            adjustments = refiner.adjustments_for(report)
+            if not adjustments:
+                break
+            attempt = attempts + 1
+            seed = refiner.next_seed(blueprint.seed, attempts)
+            retry_blueprint = blueprint.model_copy(
+                update={"quality_adjustments": adjustments, "seed": seed}
+            )
+            retry_settings = settings
+            if settings is not None and settings.seed >= 0:
+                retry_settings = settings.model_copy(update={"seed": seed})
+            pq_note = (
+                f" · last PQ {report.scores.pq:.1f}" if report.scores.pq is not None else ""
+            )
+            self._update_task_status(
+                task,
+                state=BackendState.GENERATING,
+                message=f"refining take {attempt}/{max_attempts}{pq_note}",
+                progress=task.progress,
+                device_backend=device_backend,
+                chunk_index=0,
+                chunk_count=len(chunk_durations),
+            )
+            result = self._generate_session_result(
+                task=task,
+                plan=plan,
+                blueprint=retry_blueprint,
+                chunk_durations=chunk_durations,
+                settings=retry_settings,
+                device_backend=device_backend,
+            )
+            report = score(result)
+            log.append(self._refinement_entry(attempt, retry_blueprint, report))
+            rank = self.refinement_policy.rank(report)
+            if rank > best_rank:
+                best_result, best_report, best_rank = result, report, rank
+            attempts += 1
+        return best_result, best_report, log
+
+    @staticmethod
+    def _refinement_entry(attempt: int, blueprint, report: QualityReport) -> dict:
+        return {
+            "attempt": attempt,
+            "seed": blueprint.seed,
+            "adjustments": list(blueprint.quality_adjustments),
+            "report": report.to_dict(),
+        }
+
+    def _apply_refinement_adjustments(self, blueprint):
+        """Carry the last quality report's prompt asks into this session."""
+        if self.refinement_path is None or not self.refinement_path.exists():
+            return blueprint
+        try:
+            state = loads(self.refinement_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return blueprint
+        adjustments = [str(item) for item in state.get("adjustments", []) if str(item).strip()]
+        if not adjustments:
+            return blueprint
+        return blueprint.model_copy(update={"quality_adjustments": adjustments})
+
+    def _analyze_quality(
+        self,
+        task,
+        request,
+        plan,
+        result,
+        device_backend: str,
+        precomputed: QualityReport | None = None,
+    ) -> None:
+        """Score the finished take and record the next prompt's adjustments.
+
+        Runs after playback starts; analysis failures never fail the session —
+        the report simply degrades to the local measurements.
+        """
+        if precomputed is not None:
+            self._record_quality_report(task, plan, result, precomputed, device_backend)
+            return
+        scores = None
+        if self.quality_analyzer is not None:
+            scores = self.quality_analyzer.scores_for(result.audio, result.sample_rate)
+        try:
+            report = build_report(result.audio, result.sample_rate, scores)
+            self._record_quality_report(task, plan, result, report, device_backend)
+        except Exception:
+            pass
+
+    def _record_quality_report(
+        self,
+        task,
+        plan,
+        result,
+        report: QualityReport,
+        device_backend: str,
+    ) -> None:
+        payload = report.to_dict()
+        analyzer = self.quality_analyzer
+        if analyzer is not None and getattr(analyzer, "last_error", None):
+            payload["analyzer_error"] = analyzer.last_error
+        refinement_log = getattr(self, "_last_refinement_log", None)
+        if refinement_log:
+            payload["refinement"] = refinement_log
+        metadata_path = getattr(self, "_last_metadata_path", None)
+        if metadata_path is not None and Path(metadata_path).exists():
+            try:
+                document = loads(Path(metadata_path).read_text(encoding="utf-8"))
+                document["quality"] = payload
+                Path(metadata_path).write_text(
+                    dumps(document, indent=2), encoding="utf-8"
+                )
+            except (OSError, ValueError):
+                pass
+        if self.refinement_path is not None:
+            try:
+                self.refinement_path.parent.mkdir(parents=True, exist_ok=True)
+                self.refinement_path.write_text(
+                    dumps(
+                        {
+                            "session_id": plan.session_id,
+                            "adjustments": list(report.suggestions),
+                            "report": payload,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+        if report.scores.pq is not None and self._is_active_task(task):
+            with self._lock:
+                chunk_index = self._status.chunk_index
+                chunk_count = self._status.chunk_count
+            self._update_task_status(
+                task,
+                state=BackendState.PLAYING,
+                message=f"playing · quality PQ {report.scores.pq:.1f}",
+                progress=task.progress,
+                device_backend=device_backend,
+                chunk_index=chunk_index,
+                chunk_count=chunk_count,
+            )
+
     def _update_task_status(
         self,
         task: GenerationTask,
@@ -383,6 +592,7 @@ class SessionManager:
                 self._generation_started = None
                 self._chunk_started = None
                 self._chunk_seconds = None
+            self._status_message_at = monotonic()
             self._status = BackendStatus(
                 state=task.state,
                 message=task.message,
@@ -449,11 +659,14 @@ class SessionManager:
                     base_blueprint=blueprint,
                 )
             )
-            result = self._generate_chunk(
+            result = self._generate_chunk_with_retries(
                 task,
                 chunk_blueprint,
                 duration_seconds=chunk_duration,
                 settings=settings,
+                chunk_index=chunk_index,
+                chunk_count=chunk_count,
+                device_backend=device_backend,
             )
             self._raise_if_cancelled(task)
             result = self._trim_internal_chunk_edges(result, chunk_index, chunk_count)
@@ -508,6 +721,67 @@ class SessionManager:
                 chunk_count=chunk_count,
             )
         return self._stitch_chunk_results(plan.session_id, chunk_results, chunk_metadata)
+
+    def _generate_chunk_with_retries(
+        self,
+        task: GenerationTask,
+        chunk_blueprint,
+        duration_seconds: int,
+        settings: GenerationSettings | None,
+        chunk_index: int,
+        chunk_count: int,
+        device_backend: str,
+    ) -> GenerationResult:
+        """Generate one chunk, retrying transient backend failures.
+
+        Remote backends occasionally fail a single generation (e.g. fp16 NaN
+        latents on pre-Ampere GPUs) while the next attempt succeeds; a fresh
+        seed per attempt gives the model another draw instead of failing the
+        whole session. Cancellation is never retried.
+        """
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_chunk_attempts + 1):
+            self._raise_if_cancelled(task)
+            try:
+                return self._generate_chunk(
+                    task,
+                    chunk_blueprint,
+                    duration_seconds=duration_seconds,
+                    settings=settings,
+                )
+            except GenerationCancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                if attempt >= self.max_chunk_attempts:
+                    break
+                retry_blueprint = chunk_blueprint.model_copy(
+                    update={"seed": chunk_blueprint.seed + attempt * 997}
+                )
+                retry_settings = settings
+                if settings is not None and settings.seed >= 0:
+                    retry_settings = settings.model_copy(
+                        update={"seed": chunk_blueprint.seed + attempt * 997}
+                    )
+                chunk_blueprint = retry_blueprint
+                settings = retry_settings
+                self._update_task_status(
+                    task,
+                    state=BackendState.GENERATING,
+                    message=(
+                        f"retrying chunk {chunk_index + 1}/{chunk_count} "
+                        f"(attempt {attempt + 1} of {self.max_chunk_attempts})"
+                    ),
+                    progress=task.progress,
+                    device_backend=device_backend,
+                    chunk_index=chunk_index,
+                    chunk_count=chunk_count,
+                    error=str(exc),
+                )
+        raise RuntimeError(
+            f"chunk {chunk_index + 1}/{chunk_count} failed after "
+            f"{self.max_chunk_attempts} attempts: {last_error}"
+        )
 
     @staticmethod
     def _trim_internal_chunk_edges(
@@ -809,6 +1083,7 @@ class SessionManager:
             seed=plan.seed,
             tags=list(request.style_tags),
         )
+        self._last_metadata_path = str(metadata_path)
         return str(audio_path), str(metadata_path), record
 
     @staticmethod
