@@ -123,6 +123,7 @@ lofi
    pytest tests/test_live_ace_step_http.py -v
    ```
 
+   Use pytest -m live as canonical invocation.
 2. Cycle duration to `5 minutes`.
 3. Start a session.
 
