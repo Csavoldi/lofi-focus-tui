@@ -51,12 +51,26 @@ class RunPodConfig(BaseModel):
     auto_destroy: bool = True
 
 
+class QualityConfig(BaseModel):
+    # "none" keeps the app dependency-free; "audiobox" scores every completed
+    # session through the optional audiobox_aesthetics package and feeds the
+    # producer rules that adjust the next prompt.
+    backend: Literal["none", "audiobox"] = "none"
+    excerpt_seconds: float = Field(default=60.0, gt=0.0)
+    # Auto-refinement: when a finished take scores below target, regenerate
+    # it with an adjusted prompt before playback, keeping the best attempt.
+    # max_refinement_attempts counts TOTAL takes per session (2 = one retry).
+    auto_refine: bool = True
+    max_refinement_attempts: int = Field(default=2, ge=1, le=4)
+
+
 class AppConfig(BaseModel):
     theme: str = "city_pop"
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     playback: PlaybackConfig = Field(default_factory=PlaybackConfig)
     ace_step_http: AceStepHttpConfig = Field(default_factory=AceStepHttpConfig)
     runpod: RunPodConfig = Field(default_factory=RunPodConfig)
+    quality: QualityConfig = Field(default_factory=QualityConfig)
 
 
 DEFAULT_CONFIG_PATHS = [

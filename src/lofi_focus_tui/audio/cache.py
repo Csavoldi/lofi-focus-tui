@@ -15,3 +15,7 @@ def default_output_dir() -> Path:
 
 def default_history_path() -> Path:
     return default_cache_dir() / "history.jsonl"
+
+
+def default_refinement_path() -> Path:
+    return default_cache_dir() / "refinement.json"

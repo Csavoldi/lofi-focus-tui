@@ -29,6 +29,7 @@ def test_blueprint_carries_continuity_identity():
     assert blueprint.seed == plan.seed
     assert blueprint.tempo_bpm >= plan.tempo_range[0]
     assert blueprint.boundary_constraints == BOUNDARY_CONSTRAINTS
+    assert blueprint.genre_tags == PRESET_OPTIONS["classic_lofi"].genre_tags
 
 
 def test_blueprint_applies_each_focus_recipe():
@@ -64,9 +65,33 @@ def test_blueprint_applies_each_music_preset_recipe():
 
         blueprint = create_blueprint(plan)
 
-        assert blueprint.motif == option.motif
-        assert blueprint.drum_feel == option.drum_feel
-        assert blueprint.bass_behavior == option.bass_behavior
+        assert (blueprint.motif, blueprint.drum_feel, blueprint.bass_behavior) in {
+            (variant.motif, variant.drum_feel, variant.bass_behavior)
+            for variant in option.variants
+        }
+
+
+def test_blueprint_picks_preset_variant_from_session_seed():
+    option = PRESET_OPTIONS["boom_bap"]
+    pool = {
+        (variant.motif, variant.drum_feel, variant.bass_behavior)
+        for variant in option.variants
+    }
+
+    def traits_for(seed):
+        plan = expand_preset(
+            SessionRequest(
+                preset="boom_bap", duration_minutes=30, energy="steady", seed=seed
+            )
+        )
+        blueprint = create_blueprint(plan)
+        return (blueprint.motif, blueprint.drum_feel, blueprint.bass_behavior)
+
+    picked = {traits_for(seed) for seed in range(12)}
+
+    assert picked <= pool
+    assert len(picked) >= 2
+    assert traits_for(5) == traits_for(5)
 
 
 def test_focus_and_preset_recipes_preserve_request_settings_and_vary_expected_traits():
@@ -178,5 +203,39 @@ def test_chunk_blueprint_carries_continuation_constraints():
     )
 
     assert blueprint.continuation_constraints == [
-        "avoid a sharp transient at the transition"
+        "avoid a sharp transient at the transition",
+        # chunk 1 of 2 is the final chunk: it must enter mid-groove, and the
+        # fade-out constraint belongs to non-final chunks only.
+        "begins mid-groove at full energy, continuing the established texture",
     ]
+
+
+def test_chunk_blueprint_adds_boundary_continuity_constraints_per_position():
+    plan = expand_preset(
+        SessionRequest(
+            focus="deep_work",
+            preset="classic_lofi",
+            duration_minutes=30,
+            energy=EnergyLevel.STEADY,
+        )
+    )
+
+    first = create_chunk_blueprint(plan, chunk_index=0, chunk_count=3)
+    middle = create_chunk_blueprint(plan, chunk_index=1, chunk_count=3)
+    last = create_chunk_blueprint(plan, chunk_index=2, chunk_count=3)
+
+    tail = "carries full energy through the final bar, ending mid-groove"
+    head = "begins mid-groove at full energy, continuing the established texture"
+    assert tail in first.continuation_constraints
+    assert head not in first.continuation_constraints
+    assert tail in middle.continuation_constraints
+    assert head in middle.continuation_constraints
+    assert head in last.continuation_constraints
+    assert tail not in last.continuation_constraints
+
+    # The constraints are positive music captions, so the prompt engine must
+    # keep them verbatim instead of dropping them as negations.
+    from lofi_focus_tui.generation.prompt_engine import compose_local_prompt
+
+    assert tail in compose_local_prompt(first)
+    assert head in compose_local_prompt(last)

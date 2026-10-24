@@ -147,24 +147,37 @@ def render_option_guide(theme: Theme | None = None) -> Text:
 def render_controls(status: BackendStatus, theme: Theme | None = None) -> Text:
     theme = _resolve_theme(theme)
     pause_label = "resume" if _enum_value(status.state) == "paused" else "pause"
-    pairs = (
+    option_pairs = (
+        ("i", "prompt"),
+        ("v", "mode"),
+        ("1", "focus"),
+        ("p", "preset"),
+        ("2", "duration"),
+        ("3", "energy"),
+        ("4", "style"),
+        ("t", "theme"),
+        ("h", "guide"),
+    )
+    playback_pairs = (
         ("s", "start"),
         ("space", pause_label),
         ("x", "stop"),
         ("r", "refresh"),
-        ("t", "theme"),
         ("[ ]", "volume"),
         (", .", "seek"),
         ("0", "restart"),
         ("e", "export"),
     )
-    line = Text()
-    for index, (key, label) in enumerate(pairs):
-        if index:
-            line.append("  ")
-        line.append(key, style=theme.accent)
-        line.append(f" {label}", style=theme.desc)
-    return line
+    lines = []
+    for pairs in (option_pairs, playback_pairs):
+        line = Text()
+        for index, (key, label) in enumerate(pairs):
+            if index:
+                line.append("  ")
+            line.append(key, style=theme.accent)
+            line.append(f" {label}", style=theme.desc)
+        lines.append(line)
+    return _join_lines(lines)
 
 
 def render_history(status: BackendStatus, theme: Theme | None = None) -> Text:

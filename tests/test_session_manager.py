@@ -124,6 +124,214 @@ def test_start_session_returns_generating_before_generation_finishes():
     assert final_status.output_path.endswith(".wav")
 
 
+def test_generating_status_shows_elapsed_and_moving_progress():
+    class IndefiniteBlockingModel:
+        name = "indefinite-blocking"
+
+        def __init__(self) -> None:
+            self.started = Event()
+            self.release = Event()
+
+        def generate(self, blueprint, duration_seconds, settings=None):
+            self.started.set()
+            self.release.wait()
+            return GenerationResult(
+                audio=np.zeros(duration_seconds * 44100, dtype=np.float32),
+                sample_rate=44100,
+                duration_seconds=duration_seconds,
+                metadata={
+                    "session_id": blueprint.session_id,
+                    "backend": self.name,
+                    "output_path": f"{blueprint.session_id}.wav",
+                },
+            )
+
+    model = IndefiniteBlockingModel()
+    manager = SessionManager(model=model)
+    manager.start_session(make_request())
+    first = None
+    try:
+        assert model.started.wait(timeout=2.0)
+        # Freshly published status messages are held for a few seconds before
+        # the elapsed ticker takes the message line back.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            first = manager.health()
+            if "elapsed" in first.message:
+                break
+            time.sleep(0.2)
+        time.sleep(0.3)
+        second = manager.health()
+    finally:
+        model.release.set()
+    final_status = manager.wait_for_active_task()
+
+    assert first is not None
+    assert first.state == BackendState.GENERATING
+    assert "elapsed" in first.message
+    assert 0.0 < first.progress < 0.95
+    assert "elapsed" in second.message
+    assert second.progress > first.progress
+    assert second.progress < 0.95
+    assert final_status.state == BackendState.PLAYING
+    assert final_status.progress == 1.0
+    assert "elapsed" not in final_status.message
+
+
+def test_generated_sessions_are_persisted_in_stereo(tmp_path):
+    import wave
+
+    output_manager = OutputManager(tmp_path / "outputs")
+    manager = SessionManager(
+        model=MockModelAdapter(),  # returns mono audio
+        output_manager=output_manager,
+        render_seconds_limit=1,
+    )
+
+    manager.start_session(make_request())
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    with wave.open(str(final_status.output_path), "rb") as wav:
+        assert wav.getnchannels() == 2
+
+
+class FadingEdgeModel:
+    """Mimics the observed backend behavior: every chunk closes like a song.
+
+    Chunk audio is loud music with a multi-second fade-out tail and a fade-in
+    head, exactly what produced the near-silence dips at internal seams in the
+    2026-10-15 UAT. Each chunk uses a different pitch, like the real backend's
+    independent takes.
+    """
+
+    name = "fading-edge"
+    sample_rate = 1000
+
+    def __init__(self) -> None:
+        self._call_index = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        sr = self.sample_rate
+        total = duration_seconds * sr
+        t = np.arange(total, dtype=np.float64) / sr
+        frequency = 55.0 + 7.0 * self._call_index
+        self._call_index += 1
+        music = 0.3 * np.sin(2 * np.pi * frequency * t)
+        fades = np.ones(total)
+        fade_seconds = min(3.0, duration_seconds / 3)
+        fade_in = int(fade_seconds * sr)
+        fades[:fade_in] = np.linspace(0.0, 1.0, fade_in)
+        fades[-fade_in:] = np.linspace(1.0, 0.0, fade_in)
+        audio = (music * fades).astype(np.float32)
+        return GenerationResult(
+            audio=audio,
+            sample_rate=sr,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
+class FlakyChunkModel:
+    """Fails one chunk generation once, then succeeds — like a backend that
+    intermittently returns NaN latents."""
+
+    name = "flaky-chunk"
+    sample_rate = 1000
+
+    def __init__(self, fail_on_call: int = 1) -> None:
+        self.fail_on_call = fail_on_call
+        self.calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls += 1
+        if self.calls == self.fail_on_call:
+            raise RuntimeError("Music generation failed: NaN latents")
+        audio = np.full(duration_seconds * self.sample_rate, 0.2, dtype=np.float32)
+        return GenerationResult(
+            audio=audio,
+            sample_rate=self.sample_rate,
+            duration_seconds=duration_seconds,
+            metadata={"session_id": blueprint.session_id, "backend": self.name},
+        )
+
+
+class AlwaysFailingModel:
+    name = "always-failing"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, blueprint, duration_seconds, settings=None):
+        self.calls += 1
+        raise RuntimeError("Music generation failed: NaN latents")
+
+
+def test_chunk_generation_retries_transient_backend_failure():
+    model = FlakyChunkModel(fail_on_call=2)
+    playback = RecordingPlayback()
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        chunk_seconds=10,
+        render_seconds_limit=20,  # two 10s chunks
+    )
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.PLAYING
+    assert model.calls == 3  # chunk 1 + chunk 2 failed once + chunk 2 retry
+
+
+def test_chunk_generation_fails_after_exhausted_retries():
+    model = AlwaysFailingModel()
+    manager = SessionManager(
+        model=model,
+        playback=RecordingPlayback(),
+        chunk_seconds=10,
+        render_seconds_limit=20,
+    )
+
+    manager.start_session(make_request().model_copy(update={"duration_minutes": 5}))
+    final_status = manager.wait_for_active_task()
+
+    assert final_status.state == BackendState.ERROR
+    assert model.calls == 3  # max_chunk_attempts default
+    assert "failed after 3 attempts" in (final_status.error or "")
+
+
+def test_chunk_seams_do_not_dip_to_silence_when_model_fades_edges():
+    model = FadingEdgeModel()
+    playback = RecordingPlayback()
+    manager = SessionManager(
+        model=model,
+        playback=playback,
+        chunk_seconds=10,
+        render_seconds_limit=20,  # two 10s chunks, keeps the test fast
+    )
+    manager.start_session(
+        make_request().model_copy(update={"duration_minutes": 5}),
+    )
+    manager.wait_for_active_task()
+    stitched = playback.loaded.audio.mean(axis=1)  # stereo -> mono for metering
+    sr = model.sample_rate
+
+    # Meter the central half only: the session's own intro/outro fades are
+    # kept by design, but the internal seam must sit in loud music.
+    window = int(0.2 * sr)
+    start = len(stitched) // 4
+    end = (3 * len(stitched)) // 4
+    window_rms = [
+        float(np.sqrt(np.mean(np.square(stitched[i : i + window]))))
+        for i in range(start, end - window, window)
+    ]
+
+    # Before the fix the seam region measured ~0.0007; loud passages sit near
+    # 0.2. Every seam-side window must stay comfortably above silence.
+    assert min(window_rms) > 0.05
+
+
 def test_start_session_eventually_reports_playing_status():
     manager = SessionManager(model=MockModelAdapter())
     status = manager.start_session(make_request())
@@ -559,8 +767,10 @@ def test_chunked_generation_splits_long_session_and_reports_progress():
     assert [duration for _blueprint, duration, _settings in model.calls] == [60, 60, 60, 60, 60]
     assert model.calls[0][0].section == "warmup"
     assert model.calls[-1][0].section == "cooldown"
-    assert playback.loaded.duration_seconds == 296.0
-    assert playback.loaded.audio.shape == (2960,)
+    # 5 chunks of 60s at 10 Hz with a 2s crossfade at each of the 4 seams:
+    # 3000 - 4*20 = 2920 samples, upmixed to two channels.
+    assert playback.loaded.duration_seconds == 292.0
+    assert playback.loaded.audio.shape == (2920, 2)
 
 
 def test_chunked_generation_records_numeric_durations_in_metadata():
@@ -645,7 +855,8 @@ def test_chunked_generation_reuses_one_prompt_blueprint_lineage(monkeypatch):
     assert all(chunk.energy == EnergyLevel.HIGH for chunk in model.blueprints)
     assert all(chunk.vocal_mode == "vocals" for chunk in model.blueprints)
     assert model.blueprints[2].continuation_constraints == [
-        "match the previous chunk's loudness at the transition"
+        "match the previous chunk's loudness at the transition",
+        "begins mid-groove at full energy, continuing the established texture",
     ]
 
 
@@ -697,7 +908,8 @@ def test_ordinary_boundary_warning_updates_next_prompt_without_retrying():
     assert final_status.state == BackendState.PLAYING
     assert len(model.blueprints) == 3
     assert model.blueprints[2].continuation_constraints == [
-        "match the previous chunk's loudness at the transition"
+        "match the previous chunk's loudness at the transition",
+        "begins mid-groove at full energy, continuing the established texture",
     ]
 
 
@@ -746,7 +958,8 @@ def test_generation_error_updates_backend_status():
 
     assert status.state == BackendState.GENERATING
     assert final_status.state == BackendState.ERROR
-    assert final_status.error == "generation exploded"
+    assert "failed after 3 attempts" in final_status.error
+    assert "generation exploded" in final_status.error
     assert final_status.message == "generation failed"
 
 

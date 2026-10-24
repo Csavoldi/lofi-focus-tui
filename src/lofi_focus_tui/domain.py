@@ -158,6 +158,7 @@ class CompositionBlueprint(BaseModel):
     drum_feel: str
     bass_behavior: str
     texture_layers: list[str]
+    genre_tags: str = ""
     arrangement_sections: list[str]
     boundary_constraints: list[str]
     continuation_constraints: list[str] = Field(default_factory=list)
@@ -165,6 +166,7 @@ class CompositionBlueprint(BaseModel):
     prompt: str = ""
     vocal_mode: Literal["instrumental", "vocals"] = "instrumental"
     energy: EnergyLevel = EnergyLevel.STEADY
+    quality_adjustments: list[str] = Field(default_factory=list)
 
     @field_validator("vocal_mode", mode="before")
     @classmethod

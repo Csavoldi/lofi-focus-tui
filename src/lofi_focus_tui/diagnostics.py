@@ -4,13 +4,24 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
+
+import httpx
 
 from lofi_focus_tui.audio.cache import default_cache_dir, default_output_dir
-from lofi_focus_tui.config import load_config
+from lofi_focus_tui.config import AppConfig, load_config
 from lofi_focus_tui.devices import choose_device
 
 DiagnosticStatus = Literal["ok", "warn", "fail"]
 ImportChecker = Callable[[str], bool]
+# Probe result: True = verified ACE-Step API, False = unreachable,
+# "wrong-service" = something else answers on that port.
+ServiceProbe = Callable[[str], bool | str]
+
+# Turbo checkpoints are tuned for ~8 diffusion steps; far larger values only
+# slow every generation down (guidance affects base/sft models only).
+_RECOMMENDED_INFERENCE_STEPS = 8
+_RECOMMENDED_GUIDANCE_SCALE = 7.0
 
 
 @dataclass(frozen=True)
@@ -24,12 +35,14 @@ def run_diagnostics(
     config_path: Path | None = None,
     cache_dir: Path | None = None,
     import_checker: ImportChecker | None = None,
+    service_probe: ServiceProbe | None = None,
 ) -> list[DiagnosticCheck]:
     import_checker = import_checker or _module_available
     checks = [_check_python()]
 
+    config: AppConfig | None = None
     try:
-        load_config(config_path)
+        config = load_config(config_path)
         checks.append(DiagnosticCheck("config", "ok", "loaded"))
     except Exception as exc:
         checks.append(DiagnosticCheck("config", "fail", str(exc)))
@@ -37,10 +50,16 @@ def run_diagnostics(
     checks.append(_check_optional_import("ace-step", "acestep", import_checker))
     checks.append(_check_optional_import("sounddevice", "sounddevice", import_checker))
 
+    if config is not None:
+        checks.append(_check_generation_settings(config))
+
     root = cache_dir or default_cache_dir()
     checks.append(_check_writable("cache", root))
     output_dir = (cache_dir / "outputs") if cache_dir else default_output_dir()
     checks.append(_check_writable("outputs", output_dir))
+
+    if config is not None and config.generation.backend == "ace-step-http":
+        checks.append(_check_ace_step_service(config, service_probe or _probe_http_service))
 
     device = choose_device("auto")
     device_status: DiagnosticStatus = "ok" if device.available else "warn"
@@ -83,6 +102,75 @@ def _check_writable(name: str, path: Path) -> DiagnosticCheck:
         return DiagnosticCheck(name, "ok", str(path))
     except Exception as exc:
         return DiagnosticCheck(name, "fail", str(exc))
+
+
+def _check_generation_settings(config: AppConfig) -> DiagnosticCheck:
+    generation = config.generation
+    drifted = (
+        generation.inference_steps > 2 * _RECOMMENDED_INFERENCE_STEPS
+        or generation.guidance_scale > _RECOMMENDED_GUIDANCE_SCALE + 3.0
+    )
+    summary = (
+        f"inference_steps={generation.inference_steps}, "
+        f"guidance_scale={generation.guidance_scale}"
+    )
+    if drifted:
+        return DiagnosticCheck(
+            "generation settings",
+            "warn",
+            f"{summary} is far from the turbo recommendation "
+            f"({_RECOMMENDED_INFERENCE_STEPS} / {_RECOMMENDED_GUIDANCE_SCALE:g}); "
+            "generations will be slower with no quality gain — see docs/ace-step.md",
+        )
+    return DiagnosticCheck("generation settings", "ok", summary)
+
+
+def _check_ace_step_service(config: AppConfig, probe: ServiceProbe) -> DiagnosticCheck:
+    base_url = config.ace_step_http.base_url
+    try:
+        result = probe(base_url)
+    except Exception:
+        result = False
+    if result is True:
+        return DiagnosticCheck("ace-step service", "ok", f"reachable at {base_url}")
+    if result == "wrong-service":
+        return DiagnosticCheck(
+            "ace-step service",
+            "warn",
+            f"another HTTP service answers at {base_url} but it does not expose the "
+            "ACE-Step task API (/release_task) — check the host and port, or start "
+            "the API server on the GPU host with `uv run acestep-api` "
+            "(see docs/ace-step.md)",
+        )
+    return DiagnosticCheck(
+        "ace-step service",
+        "warn",
+        f"cannot reach {base_url} — start it on the GPU host with `uv run acestep-api` "
+        "(see docs/ace-step.md); the app cannot generate until it answers",
+    )
+
+
+def _probe_http_service(base_url: str) -> bool | str:
+    # The URL comes from the user's own config.toml and deliberately targets a
+    # private LAN host (or localhost) running ACE-Step, so private ranges stay
+    # allowed; only plain HTTP(S) is accepted and redirects are never followed
+    # so a misconfigured URL cannot be bounced elsewhere.
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    health = httpx.get(f"{root}/health", timeout=5.0, follow_redirects=False)
+    if not health.is_success:
+        return False
+    # A bare 200 is not proof: TTS servers and other LAN services also answer
+    # /health. Verify the ACE-Step task API is actually mounted here.
+    try:
+        spec = httpx.get(f"{root}/openapi.json", timeout=5.0, follow_redirects=False)
+        if spec.is_success and "release_task" in spec.text:
+            return True
+    except httpx.HTTPError:
+        pass
+    return "wrong-service"
 
 
 def _module_available(module: str) -> bool:

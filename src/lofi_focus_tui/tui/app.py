@@ -43,6 +43,7 @@ class ExportScreen(ModalScreen[None]):
         yield Static("export directory:", id="export-prompt")
         yield Input(value="~/Music/lofi-focus-tui", id="export-directory")
         yield Static("", id="export-error")
+        yield Static("Enter to export · Escape to cancel", id="export-hint")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         try:
@@ -90,8 +91,11 @@ class LofiFocusApp(App[None]):
         height: auto;
         margin: 1 0;
     }
-    #option-guide, #export-prompt, #export-directory, #export-error {
+    #option-guide, #export-prompt, #export-directory, #export-error, #export-hint {
         width: 64;
+    }
+    #export-hint {
+        color: #666666;
     }
     #prompt {
         border: round #666666;

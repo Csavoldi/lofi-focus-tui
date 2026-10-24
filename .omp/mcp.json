@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "backlog": {
+      "type": "stdio",
+      "command": "/home/dogda/Documents/backlog-md-py/.venv/bin/backlog-py-mcp",
+      "env": {
+        "BACKLOG_CWD": "/home/dogda/Documents/Development/Projects/lofi-focus-tui"
+      }
+    }
+  }
+}

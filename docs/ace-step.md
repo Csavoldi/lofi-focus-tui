@@ -152,9 +152,13 @@ as metadata fields, never as caption text.
 
 `src/lofi_focus_tui/generation/prompt_engine.py` composes each request:
 
-- **Caption** (`compose_local_prompt`): natural language covering mood, genre
-  ("relaxed instrumental lo-fi"), instruments (preset motif/drum/bass recipes), style
-  tags, focus intent, and the chunk section. Constraints are rewritten positively
+- **Caption** (`compose_local_prompt`): natural language in the community-validated
+  slot order for ACE-Step — genre/style tags first (each preset names its genre
+  explicitly, e.g. jazz_vinyl says "jazz, vinyl", so the model anchors on it before
+  the generic lo-fi umbrella), then lead instruments (preset motif/drum/bass recipes),
+  a qualitative tempo phrase derived from the bpm ("easy mid-tempo pulse" — the numeric
+  bpm itself stays metadata-only), the user's wording as atmosphere, focus intent, and
+  the chunk section. Constraints are rewritten positively
   ("no abrupt changes" becomes "smooth transitions"); mixing instructions such as
   loudness matching are dropped because the app enforces them in audio post-processing.
 - **Lyrics** (`compose_instrumental_lyrics`): `[Instrumental]` for single generations;
@@ -162,8 +166,8 @@ as metadata fields, never as caption text.
   `[Main Theme - steady]`, `[Build - driving]`, `[Outro - gentle]`.
 - **Metadata** (`bpm`, `key_scale`, `time_signature`, `audio_duration`): sent as
   `/release_task` fields and mirrored into `/format_input`'s `param_obj`. The app's
-  `minor pentatonic` key center maps to `A minor` for the `key_scale` anchor
-  (`key_scale_for_metadata`).
+  `minor pentatonic` key center maps to `A Minor` for the `key_scale` anchor
+  (`key_scale_for_metadata`; full key names, per the upstream Tutorial guidance).
 - **Enrichment**: the composed caption goes through `/format_input` for LM rewriting;
   the returned caption is appended after the user's own wording
   (`compose_enriched_prompt`, capped at 1024 characters).

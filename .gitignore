@@ -12,3 +12,5 @@ build/
 *.flac
 .worktrees/
 config.toml
+.mimosa/
+models/
