@@ -11,7 +11,7 @@ mode is an explicit development fallback.
 ## Install and run
 
 The normal setup uses the ACE-Step-1.5 service already running remotely at
-`192.168.2.220:8001`. The Lofi app runs locally as a single process; do not start
+`192.168.1.100:8001`. The Lofi app runs locally as a single process; do not start
 ACE-Step on the Lofi machine.
 
 You need Python 3.10+, Git, and [`uv`](https://docs.astral.sh/uv/) if you also manage the
@@ -51,20 +51,20 @@ batch_size = 1
 chunk_seconds = 600
 
 [ace_step_http]
-base_url = "http://192.168.2.220:8001"
+base_url = "http://192.168.1.100:8001"
 api_key = ""
 timeout_seconds = 1800.0
 ```
 
-If your ACE-Step service is on a different machine, replace `192.168.2.220` with its
+If your ACE-Step service is on a different machine, replace `192.168.1.100` with its
 LAN address. Keep port `8001` reachable from the machine running Lofi, and do not expose
 the ACE-Step API directly to the public internet.
 
 Check the remote service before launching the app:
 
 ```bash
-curl http://192.168.2.220:8001/health
-curl http://192.168.2.220:8001/v1/models
+curl http://192.168.1.100:8001/health
+curl http://192.168.1.100:8001/v1/models
 ```
 
 ### 3. Start the app
@@ -161,8 +161,12 @@ Full guide: [`docs/quality-loop.md`](docs/quality-loop.md).
 ### Troubleshooting
 
 - **ACE-Step health check fails:** verify that the remote service is running at
-  `192.168.2.220:8001`, that the Lofi machine can reach it, and that the firewall allows
+  `192.168.1.100:8001`, that the Lofi machine can reach it, and that the firewall allows
   TCP port `8001`.
+- **Something else answers on the port:** `lofi-doctor` distinguishes an unreachable
+  service from a wrong one — if an HTTP server answers `/health` but does not expose the
+  ACE-Step task API (`/release_task`), it reports which host is wrong and how to start
+  the API server on the GPU host (`uv run acestep-api`).
 - **The app shows the wrong backend:** check `config.toml`, or run
   `LOFI_BACKEND=ace-step-http lofi` for a one-off override.
 - **No sound:** the generated WAV is still saved. Confirm that an audio output device is
@@ -215,7 +219,7 @@ Saved sessions are written under `~/.cache/lofi-focus-tui/outputs`, with history
 The live UAT uses the remote ACE-Step service and verifies a five-minute request:
 
 ```bash
-LOFI_UAT_ACE_STEP_BASE_URL=http://192.168.2.220:8001 \
+LOFI_UAT_ACE_STEP_BASE_URL=http://192.168.1.100:8001 \
 LOFI_UAT_ACE_STEP_SECONDS=300 \
 pytest tests/test_live_ace_step_http.py -v
 ```
